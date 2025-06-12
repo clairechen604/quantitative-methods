@@ -1,0 +1,163 @@
+---
+title: "HW 1"
+author: "Claire Chen"
+date: today
+format: pdf
+editor: visual
+---
+
+```{r message=FALSE, warning=FALSE}
+library(readr)
+library(dplyr)
+library(haven)
+library(knitr)
+library(report)
+library(broom)
+
+df <- read_sav("https://github.com/felixthoemmes/hwdatasets/blob/master/hw1.sav?raw=true")
+```
+
+# Question 1
+
+Check the type of the variables in the data set and change the "group" variable as a factor.
+
+```{r}
+df
+
+df <- df |>
+  mutate(
+    group = factor(group))
+```
+
+Report the mean and the standard deviation of the reaction time variable in the overall sample.
+
+```{r}
+sample_summary <- df |>
+  summarize(mean = mean(reaction), sd = sd(reaction))
+
+sample_summary |>
+  kable(digits = 2,
+        caption = "Descriptive Statistics of Reaction Time in Overall Sample")
+```
+
+Report the mean and the standard deviation of the reaction times but grouped by the variable “group”.
+
+```{r}
+group_summary <- df |>
+  group_by(group) |>
+  summarize(mean = mean(reaction), sd = sd(reaction))
+  
+group_summary |>
+  kable(digits = 2,
+        caption = "Descriptive Statistics of Reaction Time in Groups 0 and 1")
+```
+
+Report all of your results in a well-formatted table.
+
+```{r}
+combined_summary <- bind_rows(group_summary, sample_summary)
+
+combined_summary |>
+  kable(digits = 2,
+        caption = "Descriptive Statistics of Overall and Groups' Reaction Time")
+```
+
+# Question 2
+
+Form a new variable “logdeviationreaction”.
+
+```{r}
+df <- df |>
+  mutate(logdeviationreaction = log(abs(df$reaction-mean(df$reaction))))
+```
+
+Report the mean, and standard deviation of variable “logdeviationreaction”.
+
+```{r}
+df |>
+  summarize(mean = mean(logdeviationreaction), sd = sd(logdeviationreaction)) |>
+  kable(digits = 2,
+        caption = "Descriptive Statistics of Variable 'logdeviationreaction'")
+```
+
+# Question 3
+
+Report the mean and standard deviation of “logdeviationreaction” variable for individuals assigned to group 0.
+
+```{r}
+df |>
+  filter(group == 0) |>
+  summarize(mean = mean(logdeviationreaction), sd = sd(logdeviationreaction)) |>
+  kable(digits = 2,
+        caption = "Decriptive Statistics of Group 0 legdeviationreaction")
+```
+
+# Question 4
+
+Form z-scores of the previously created reaction time variable "logdeviationreaction" and save them in a new column, called “zreaction”.
+
+```{r}
+df <- df |>
+  mutate(zreaction = (logdeviationreaction-mean(logdeviationreaction))
+         /sd(logdeviationreaction))
+```
+
+Print the first 10 cases of zreaction only in your document.
+
+```{r}
+head(df$zreaction, 10) |>
+  kable(caption = "First 10 Cases of 'zreaction'")
+```
+
+# Question 5
+
+Filter all cases that have a “zreaction” time that is larger than \|1\|, and then count cases that fulfill this criterion within each group defined by the “group” variable. Use summarize() and the n() function to obtain your results and print them in your document.
+
+```{r}
+df |>
+  filter(abs(zreaction) >= 1) |>
+  group_by(group) |>
+  summarize(cases = n()) |>
+  kable(digits = 2,
+        caption = "Numbers of 'zreaction' Larger than |1| in Groups 0 and 1")
+```
+
+# Question 6
+
+Create a new data set, where you select only the reaction time variable, and then filter only those cases in which reaction time was larger than the median reaction time in the whole sample. Then print all cases of this new data set.
+
+```{r}
+new_df <- df |>
+  select(reaction) |>
+  filter(reaction > median(reaction))
+
+new_df |>
+  kable(caption = "Cases with Reaction Time Larger Than Median Reaction Time")
+```
+
+# Question 7
+
+Use the “report_sample” function to obtain descriptive statistics for the reaction time variable grouped by the “group” variable. Print the results of the report_sample function in your report.
+
+```{r}
+df |>
+  select(reaction, group) |>
+  group_by(group) |>
+  report_sample()
+```
+
+# Question 8
+
+One strength of the tidyverse workflow is its readable and intuitive syntax. For instance, functions for manipulating data sets like "filter()," "select()," "summarize()" are everyday verbs that people tend use when working with data. Naming the functions after common statistical verbs ensures high readability of codes produced, and it also allows for shorter learning curve in beginner coders since the functions are intuitive. Another strength of the tidyverse workflow is that it contains a comprehensive system of packages for data importation, cleaning, manipulation, and display. Loading the tidyverse workflow means loading the series of packages that are compatible with each other and consistent in formatting.
+
+One potential weakness of the tidyverse workflow is that working with small and simple data sets can seem like an overkill and introduce more possibilities for errors. Namely, when manipulating a data set, tidyverse may require a long chains of pipe operators; using multiple pipe operators to acquire the desired data set structure means there is a higher chance of making errors when coding. Another potential weakness of the tidyverse workflow is its lack of applicability to non-tabular data. Tidyverse is powerful and efficient when working with tabular data like the data set used in this homework assignment, but when working with data that do not have a tabular structure, it will often require more specialized packages.
+
+# Question 9
+
+Using the pipe operator when performing a series of functions to manipulate a data set improves the readability of the codes as it follows natural English processing conventions. The pipe operator allows for readers to interpret the code from left to right and from top to bottom as functions are introduced; essentially, the pipe operator works like the English word "and" between functions. Instead of nesting multiple functions into one long line of code that is difficult to parse out, the pipe operator partitions multiple functions in a way that is clearly readable since every function occupies one line. Moreover, when manipulating a data set, it often requires multiple steps to get to the desired result; using the pipe operator improves the efficiency of coding as it chains multiple functions together into a single sequence. Simultaneously, when functions are chained into one sequence, it also improves readability as viewers of the code can easily follow the logic behind calling each function, which reduces viewers' cognitive load while trying to understand the overall code.
+
+# Question 10
+
+In data analysis, code readability and reproducibility are crucial as high levels of both characteristics are conducive to future development and collaboration on existing codes. Readable codes can be easily understood not only by other coders but also the author themselves when revisiting their previously written codes. This is helpful when the author or other coders want to modify, extend, or debug the existing codes as the logic of the codes can be easily followed. Codes that are reproducible mean that others can validate the results of the data analysis, which is pivotal for scientific research and the credibility of researchers (authors of the original codes). High code readability and reproducibility contribute to the culture of sharing research methods and maintaining transparency in analyses in the research community.
+
+The tidyverse's approach contributes to code readability and reproducibility through its consistent, intuitive syntax in a well-integrated system of packages. As mentioned above, tidyverse uses everyday statistical verbs as function names for data manipulation such that it is easy for beginners to start coding and read codes written by others. Tidyverse emphasizes the use of the pipe operator throughout its workflow, which makes its code clear and the logic effortless to follow since each function occupies one line, instead of the traditional nesting method when calling multiple functions. Tidyverse has an ecosystem of packages that streamlines the process from importing to displaying data; this contributes to code reproducibility as any reviewers will be using the same packages and call the same functions to validate others' work in a transparent manner.
