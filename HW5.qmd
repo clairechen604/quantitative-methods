@@ -361,19 +361,3 @@ combined_plot
 ```
 
 For the plot with false null hypothesis, the Bayes Factor increases steadily as the sample size increases, indicating stronger evidence against the point null hypothesis. For the plot with true null hypothesis, the Bayes Factor fluctuates initially with small sample sizes but gradually converges towards a lower value as sample size increases, indicating support for the null hypothesis. The plots imply that Bayes Factor is sensitive to sample sizes, and as sample size increases, BF becomes more decisive and provides more informative supporting information for which hypothesis to favor.
-
-# Question 8
-
-Only using to Bayesian logic, both researchers should obtain the same Bayes Factor in this scenario, regardless of Researcher B's mid-way examination at n = 50. This is because the Bayes Factor is inherently based on the likelihood of the observed data given a hypothesis, combined with prior distributions. Bayesian inference is a cumulative process that updates beliefs based on the total evidence, without being dictated by a specific stopping rule, or when data are being examined.
-
-In the current scenario, both researchers end up with the exact same data and use the same prior distributions. Researcher A conducts the Bayesian hypothesis test without mid-way checks, while Researcher B looks at the data mid-way but continues collecting until n = 100. Bayesian analysis focuses solely on the final data set and the priors, meaning that the path by which the data are collected does not affect the computation of the Bayes Factor. Hence, if both researchers have the same data and use the same prior, their Bayes Factors will be identical, as the posterior beliefs depend only on the complete data set, not the process of mid-way examination of data.
-
-# Question 9
-
-In Bayesian inference, priors represent initial beliefs, and these are updated using the likelihood of observed data to form posteriors. When two researchers start with very different priors, their initial beliefs about a parameter may differ significantly. However, as more data is observed, the influence of the prior diminishes, and the likelihood dominates the posterior. This occurs because, with increasing data, the likelihood concentrates more tightly around the true parameter value, overwhelming the differences in the initial priors. As a result, regardless of their starting points, both researchers’ posteriors will increasingly reflect the same information provided by the data, leading them to converge on similar conclusions as their views are driven primarily by the observed evidence rather than their initial beliefs.
-
-# Question 10
-
-In this scenario, the Bayes Factor favors H0 over H1, despite both being incorrect. The reason for this is that H1's diffuse distribution spreads probability mass over a wide range, including very extremes values far from the true mean of 5. This results in a lower likelihood for the observed data under H1 because its prior assigns little weight to values close to the true population parameter. In contrast, H0 is a point hypothesis centered on 0, and although incorrect, it is more concentrated, which can make it seem more compatible with the data.
-
-This reveals a potential issue with Bayes Factors, which is that they can favor more concentrated hypotheses, like H0, even when those hypotheses are wrong, simply because diffuse priors, like H1, dilute their likelihood over a vast range. This highlights the importance of carefully selecting priors in Bayesian analysis. Overly diffuse priors in the alternative hypothesis can skew results, favoring the null hypothesis by default rather than providing an accurate comparison between the two. This means that we must use more realistic or informed priors to avoid this issue.
