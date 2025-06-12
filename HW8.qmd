@@ -1,0 +1,260 @@
+---
+title: "HW8"
+author: "Claire Chen"
+date: today
+format: pdf
+editor: visual
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r message=FALSE, warning=FALSE}
+library(haven)
+library(emmeans)
+library(readr)
+library(labelled)
+library(rstanarm)
+library(BayesFactor)
+library(easystats)
+library(tidyverse)
+library(BFpack)
+library(knitr)
+library(patchwork)
+library(scales)
+
+df <- read.csv(
+  "https://raw.githubusercontent.com/felixthoemmes/hwdatasets/master/haushoferrep.csv")
+```
+
+# Question 1
+
+First, import the data, recode variables to factors if necessary, and generate a table that reports the mean and standard deviations of the four groups in the design, and present them in a single table. For this and following questions, please always round your numbers to 2 decimal places, except p-values which should be rounded to 3 digits.
+
+```{r}
+df <- df |>
+  mutate(sex = to_factor(sex),
+         treat = to_factor(treat))
+
+df |>
+  group_by(sex, treat) |>
+  summarize(mean = mean(wb),
+            sd = sd(wb), .groups = 'drop') |>
+  kable(digits = 2,
+        caption = "Summary Statistics",
+        format.args = list(nsmall = 2))
+```
+
+# Question 2
+
+In addition to the descriptive statistics above, generate a kernel density estimate for each group, and then use patchwork or facet_grid to present all four kernel density estimates in a single plot. Make sure to use the same limits on the axes for each plot to make them comparable. Briefly describe the distributions. Expected length is 1-3 sentences.
+
+```{r}
+df |>
+  ggplot(aes(x = wb, fill = interaction(sex, treat))) +
+  geom_density(alpha = 0.4) +
+  facet_grid(sex ~ treat) +
+  theme(axis.text.x = element_text(size = 6),
+        axis.text.y = element_text(size = 6)) +
+  labs(title = "Kernel Density Estimates for Each Group",
+       x = "Well-Being Score", y = "Density")
+```
+
+The kernel density estimates for all four groups appear to be approximately normally distributed. The well-being scores of both female-control and male-control groups are centered around x = 0 whereas they are shifted to the right and centered around x = 0.7 for female-treatment and male-treatment groups. The spread of the female-control group is the most spread out, followed by male-control and female-treatment group, and the male-treatment group is the least spread out.
+
+# Question 3
+
+Report the three frequentist F-test associated with the two main effects and the interaction effect. Then use the BayesFactor package to compute four Bayes Factors, comparing a null model to the following other models: a model with just a main effect for sex, a model with just a main effect for treatment, a model with two main effects, and a full model with two main effects and the interaction. You do not need to put these results in a kable, but you need to provide a brief interpretation of both the Frequentist and the Bayesian results. Expected length is about 1-2 paragraph.
+
+```{r}
+lm <- lm(wb ~ 1 + sex * treat, data = df)
+
+joint_tests(lm) |>
+  mutate(p.value = pvalue(p.value)) |>
+  kable(digits = 2,
+        caption = "Frequentist Analysis Results")
+
+anovaBF(wb ~ 1 + sex * treat, data = df) |>
+  extractBF() |>
+  select(-error, -time, -code) |>
+  kable(digits = 2, 
+        caption = "Bayes Factors",
+        format.args = list(scientific = FALSE))
+```
+
+In the Frequentist analysis, the p-values for the main effect of sex, main effect of treatment, and the interaction effect between the two factors are 0.042, \<0.001, and 0.005, respectively. Because all three values are smaller than our decision criterion p = 0.05, we have convincing evidence to suggest that these effects are statistically significant. There are main effects from the factor of sex and the factor of treatment, and there is an interaction effect between the two factors.
+
+In the Bayesian analysis, the BFs from the four models were 0.44, 1.5x10^14^, 7.5x10^13^, and 3.3x10^14^ for a model with just a main effect for sex, a model with just a main effect for treatment, a model with two main effects, and a full model with two main effects and the interaction, respectively. Since the BF for the model with just a main effect for sex is 0.44, we have really weak anecdotal evidence suggesting that there is not a main effect for the sex only model. For the other three models, since the BFs are really large, we have overwhelming evidence suggesting that there are a main effect for treatment only model, two main effects model, and two main effects and the interaction in the full model.
+
+# Question 4
+
+Compute the differences in the marginal means between the treatment and the control group, and then the differences in marginal means between the two different sexes. For both, compute frequentist and Bayesian point estimates. Use priors that are normally distributed, centered on 0, and have a standard deviation of 3 (on the standardized scale using autoscale). Report the Frequentist marginal mean differences in a single table, and likewise the Bayesian marginal mean differences in a single table. Then report p-values and Bayes Factors for each of these comparisons, and briefly interpret them. Expected length is about 2-3 sentences.
+
+```{r message=FALSE, warning=FALSE}
+fq_diff_treat <- summary(emmeans(lm, "treat", contr = "pairwise", 
+                              adjust = "tukey"), infer = TRUE)$contrasts
+
+fq_diff_sex <- summary(emmeans(lm, "sex", contr = "pairwise", 
+                            adjust = "tukey"), infer = TRUE)$contrasts
+
+bind_rows(fq_diff_treat, fq_diff_sex) |>
+  mutate(p.value = pvalue(p.value)) |>
+  rename(lower.CI = lower.CL, upper.CI = upper.CL) |>
+  kable(digits = c(0, 2, 2, 2, 2, 2, 2, 3),
+        caption = "Frequentist Analysis Results")
+```
+
+```{r results = "hide", cache=TRUE}
+set.seed(5750)
+blm <- stan_glm(wb ~ 1 + sex * treat, family = gaussian(), data = df,
+                prior_intercept = normal(0, 3, autoscale = TRUE),
+                prior = normal(0, 3, autoscale = TRUE),
+                iter = 40000)
+```
+
+```{r message=FALSE, warning=FALSE}
+set.seed(5750)
+by_diff_treat <- describe_posterior(
+  emmeans(blm, specs = "treat", 
+          contr = "pairwise")$contrasts, 
+  test = "bayesfactor", bf_prior = blm)
+
+set.seed(5750)
+by_diff_sex <- describe_posterior(
+  emmeans(blm, specs = "sex", 
+          contr = "pairwise")$contrasts, 
+  test = "bayesfactor", bf_prior = blm)
+
+bind_rows(by_diff_treat, by_diff_sex) |>
+  mutate(BF = exp(log_BF)) |>
+  select(-log_BF) |>
+  kable(digits = c(0, 2, 2, 2, 2, 2),
+        caption = "Bayesian Analysis Results")
+```
+
+In the Frequentist analysis, the p-values for the differences in the marginal means between control vs. treatment and female vs. male are \<0.001 and 0.042, respectively. Since both p-values are smaller than the decision criterion of p = 0.05, we have convincing evidence suggesting that the differences in the marginal means between two groups in each factor are statistically significant.
+
+In the Bayesian analysis, the BFs for the differences in the marginal means between control vs. treatment and female vs. male are 1.4x10^7^ and 0.06, respectively. Since the BF for the difference in the marginal means between control vs. treatment is so large, we have overwhelming evidence suggesting that there is a difference in the marginal means. However, the BF for marginal means between female vs. male is small, we have weak to almost anecdotal evidence suggesting that there is not a difference in the marginal means between two sexes.
+
+# Question 5
+
+Report the point estimate (both frequentist and Bayesian), and a confidence interval & credible interval for the interaction effect. Use priors that are normally distributed, centered on 0, and have a standard deviation of 3 (on the standardized scale using autoscale). Provide a brief interpretation. Expected length is 1-2 sentences.
+
+```{r}
+summary(emmeans(lm, c("sex", "treat"), 
+                contr = list(sex_treat_interaction = c(1, -1, -1, 1))), 
+        infer = TRUE)$contrasts |> 
+  mutate(p.value = pvalue(p.value)) |>
+  rename(lower.CI = lower.CL, upper.CI = upper.CL) |>
+  kable(digits = c(0, 2, 2, 2, 2, 2, 2, 3),
+        caption = "Frequentist Analysis Results")
+```
+
+```{r message=FALSE, warning=FALSE}
+set.seed(5750)
+summary(emmeans(blm, c("sex", "treat"), 
+                contr = list(sex_treat_interaction = 
+                               c(1, -1, -1, 1)))$contrasts) |> 
+  kable(digits = c(0, 2, 2, 2),
+        caption = "Bayesian Analysis Results",
+        format.args = list(nsmall = 2))
+```
+
+In the Frequentist analysis, the point estimate for the interaction effect is -0.36, and the 95% confidence interval is (-0.61, -0.11). Since the confidence interval does not contain the value zero, we have convincing evidence suggesting that the interaction effect between two factors is statistically significant.
+
+In the Bayesian analysis, the point estimate for the interaction effect is -0.36, and the 95% credible interval is (-0.61, -0.11). Since the credible interval does not contain the value zero, we have convincing evidence suggesting that there is an interaction effect between two factors.
+
+# Question 6
+
+Compute all possible pairwise differences among all four groups. Instead of testing, focus on estimation, and report for the Frequentist analysis, 95% confidence intervals with point estimates. Adjust the length of the confidence intervals using the Tukey adjustment (which emmeans will suggest by default for all pairwise differences). For the Bayesian analysis only report the 95% credible intervals and the Bayesian point estimate. Present the results in either a single table, or two tables separated by type of analysis (Frequentist vs Bayesian).
+
+```{r}
+summary(emmeans(lm, specs = 1 ~ sex * treat, contr = "pairwise", 
+                adjust = "tukey"), infer = TRUE)$contrasts |>
+  mutate(p.value = pvalue(p.value)) |>
+  rename(lower.CI = lower.CL, upper.CI = upper.CL) |>
+  kable(digits = c(0, 2, 2, 2, 2, 2, 2, 3),
+        caption = "Frequentist Analysis Results")
+```
+
+```{r message=FALSE, warning=FALSE}
+set.seed(5750)
+describe_posterior(emmeans(blm, specs = 1 ~ sex * treat, 
+                           contr = "pairwise")$contrasts, 
+                   test = "bayesfactor", bf_prior = blm) |>
+  mutate(BF = exp(log_BF)) |>
+  select(-log_BF) |>
+  kable(digits = c(0, 2, 2, 2, 2, 2),
+        caption = "Bayesian Analysis Results")
+```
+
+# Question 7
+
+Compute a contrast in which you examine whether the mean of well-being for the group that received cash transfers to wives is different from an average of all other groups. Provide a p-value, a confidence interval, a Bayes Factor, and a credible interval for this contrast. Briefly interpret your results. Expected length is about 1-2 sentences.
+
+```{r}
+summary(emmeans(lm, specs = c("sex", "treat"),
+                contr = list(femaletreat_vs_others = 
+                               c(-1/3, -1/3, 1, -1/3)), 
+                adjust = "none", infer = TRUE))$contrasts |>
+  mutate(p.value = pvalue(p.value)) |>
+  rename(lower.CI = lower.CL, upper.CI = upper.CL) |>
+  kable(digits = c(0, 2, 2, 2, 2, 2, 2, 3),
+        caption = "Frequentist Analysis Results")
+```
+
+```{r message=FALSE, warning=FALSE}
+set.seed(5750)
+describe_posterior(emmeans(blm, specs = c("sex", "treat"),
+             contr = list(femaletreat_vs_others = 
+                               c(-1/3, -1/3, 1, -1/3)))$contrasts, 
+             test="bayesfactor", bf_prior = blm) |>
+  mutate(BF = exp(log_BF)) |>
+  select(-log_BF) |>
+  kable(digits = c(0, 2, 2, 2, 2, 2),
+        caption = "Bayesian Analysis Results")
+```
+
+In the Frequentist analysis, the p-value for the contrast between the mean of well-being for the group that received cash transfers to wives (female and treatment) and an average of all other groups is \<0.001. Since the p-value is smaller than our decision criterion of p = 0.05, we have convincing evidence suggesting that the contrast is statistically significant and there is a difference between the female_treatment group and the average of the other groups. Similarly, the 95% confidence interval for this contrast is (0.43, 0.72). Since the confidence interval does not contain the value zero, the Frequentist results align with each other.
+
+In the Bayesian analysis, the BF for the contrast between the mean of well-being for the group that received cash transfers to wives (female and treatment) and an average of all other groups is 3.1x10^7^. Since the BF is so large, we have overwhelming evidence suggesting that there is a difference between the female_treatment group and the average of the other groups. Similarly, the 95% credible interval for this contrast is (0.43, 0.72). Since the credible interval does not contain the value zero, the Bayesian results align with each other.
+
+# Question 8
+
+Using a factorial design with both factors A and B offers several advantages over conducting two separate single-factor experiments. Firstly, a factorial design allows researchers to assess not only the main effects of each factor but also any interaction between factors A and B. An interaction effect reveals how the influence of one factor depends on the levels of the other, providing a more nuanced understanding of how the factors work together. For instance, if the effect of A changes depending on the level of B, this interaction might be crucial to fully understanding the underlying processes or mechanisms, which would be missed in separate experiments.
+
+Secondly, a factorial design is typically more efficient. By testing all combinations of factor levels in a single experiment, it uses fewer resources, such as time, participants, and materials, to obtain a comprehensive view of both factors’ effects. This design also improves statistical power by leveraging all data points to test each main effect and the interaction simultaneously. In contrast, separate experiments could require larger sample sizes to achieve similar power for each factor’s effect and would still fail to detect any interactions.
+
+# Question 9
+
+Comparing the marginal means of B1 vs B2 (averaging over all levels of A)
+
+|     | A1   | A2   | A3   | A4   |
+|-----|------|------|------|------|
+| B1  | 1/4  | 1/4  | 1/4  | 1/4  |
+| B2  | -1/4 | -1/4 | -1/4 | -1/4 |
+| B3  | 0    | 0    | 0    | 0    |
+| B4  | 0    | 0    | 0    | 0    |
+
+Testing whether the conditional effect of A1 vs all other levels of A in stratum B1 is different than the conditional effect of A1 vs all other levels of A in strata B3 and B4 combined
+
+|     | A1   | A2   | A3   | A4   |
+|-----|------|------|------|------|
+| B1  | 1    | -1/3 | -1/3 | -1/3 |
+| B2  | 0    | 0    | 0    | 0    |
+| B3  | -1/2 | 1/6  | 1/6  | 1/6  |
+| B4  | -1/2 | 1/6  | 1/6  | 1/6  |
+
+An interaction effect between levels A3 and A4 within levels of B3 and B4. In other words, testing whether the difference between A3 and A4 is different within levels of B3 and B4
+
+|     | A1  | A2  | A3  | A4  |
+|-----|-----|-----|-----|-----|
+| B1  | 0   | 0   | 0   | 0   |
+| B2  | 0   | 0   | 0   | 0   |
+| B3  | 0   | 0   | 1   | -1  |
+| B4  | 0   | 0   | -1  | 1   |
+
+# Question 10
+
+In a completely balanced design, Simpson’s paradox cannot occur because the marginal effects align with the conditional effects. In another word, the marginal means become simple averages of the conditional means. In such designs, every group or category within the stratifying variable is equally represented across all levels of the variable of interest. This means that, on average, the influence of the stratifying variable (e.g., departments in the Berkeley admissions example) is evenly distributed, preventing any subgroup from disproportionately affecting the overall trend.
+
+Simpson’s paradox typically arises when there is an imbalance—such as unequal representation in each subgroup—which can cause the aggregate (marginal) association to diverge from the associations within each subgroup (conditional). However, in a completely balanced design, since each subgroup contributes equally, there is no opportunity for an aggregate trend to mask or reverse the trend observed within individual subgroups. This balance ensures that the marginal effects reflect the conditional effects, effectively preventing the paradox from occurring.

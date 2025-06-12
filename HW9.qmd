@@ -1,0 +1,266 @@
+---
+title: "HW9"
+author: "Claire Chen"
+date: today
+format: pdf
+editor: visual
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r message=FALSE, warning=FALSE}
+library(haven)
+library(emmeans)
+library(readr)
+library(labelled)
+library(rstanarm)
+library(BayesFactor)
+library(easystats)
+library(tidyverse)
+library(BFpack)
+library(knitr)
+library(patchwork)
+library(scales)
+
+df <- read_sav(
+  "https://github.com/felixthoemmes/hwdatasets/blob/master/arguments.sav?raw=true")
+```
+
+# Question 1
+
+First, import the data, recode factors if necessary, and generate a table that reports the mean and standard deviation of the outcome variable (“value”), and the sample size for all possible combinations of factor levels of all factors (8 groups total). Please present all this information in a well-formatted table, and use appropriate rounding.
+
+```{r}
+df <- df |>
+  mutate(monitors = to_factor(monitors),
+         argument = to_factor(argument),
+         source = to_factor(source))
+
+df |>
+  group_by(monitors, argument, source) |>
+  summarize(mean_value = mean(value),
+            sd_value = sd(value),
+            sample_size = n(),
+            .groups = 'drop') |>
+  kable(digits = 2,
+        caption = "Summary Statistics")
+```
+
+# Question 2
+
+In addition to the descriptive statistics above, also generate kernel density estimates, but DO NOT overlay them, as there are too many groups. Instead arrange them in a grid, e,g., factors in rows and columns. The particular arrangement of factors in this grid is up to you. You might find the facet_grid() function in ggplot useful for this. It is not necessary to comment on the graphical display.
+
+```{r}
+df |>
+  ggplot(aes(x = value, fill = interaction(monitors, source, argument))) +
+  geom_density(alpha = 0.4) +
+  facet_grid(monitors ~ source + argument) +
+  labs(title = "Kernel Density Estimates of Argument Value by Group",
+       x = "Value",
+       y = "Density") +
+  theme(legend.position = "bottom",
+        legend.text = element_text(size = 8),
+        legend.title = element_text(size = 9),
+        legend.key.size = unit(0.5, "lines")) +
+  guides(fill = guide_legend(ncol = 2))
+```
+
+# Question 3
+
+Perform frequentist hypothesis tests. Estimate a model that includes all main effects and all interactions of all three independent variables as predictors of the outcome. Report: each of the three main effects, along with frequentist inferential statistics (F and p-value); each of the three two-way interactions, along with frequentist inferential statistics; the three-way interaction, along with frequentist inferential statistics Provide a short write-up for each analysis result that you performed. Expected length is 1-4 sentences.
+
+```{r}
+lm <- lm(value ~ 1 + monitors * source * argument, data = df)
+
+joint_tests(lm) |>
+  mutate(p.value = pvalue(p.value)) |>
+  kable(digits = c(0, 2, 2, 2, 3),
+        row.names = FALSE,
+        caption = "Frequentist Analysis Results")
+```
+
+The Frequentist analysis using a linear model with “monitors,” “source,” and “argument” as predictors revealed varied significance among main effects and interactions. For main effects, “monitors” (F(1, 88) = 0.03, p = 0.859) and “source” (F(1, 88) = 0.51, p = 0.478) were not significant, indicating that these factors alone did not significantly influence the outcome. Conversely, the “argument” variable exhibited a significant main effect (F(1, 88) = 18.26, p \< 0.001), suggesting meaningful differences between levels of “argument” in their impact on the outcome.
+
+Regarding two-way interactions, there was a significant interaction between “monitors” and “source” (F(1, 88) = 9.16, p = 0.003), implying that the effect of one factor depends on the level of the other. In contrast, interactions between “monitors” and “argument” (F(1, 88) = 0.28, p = 0.595) and between “source” and “argument” (F(1, 88) = 0.51, p = 0.478) were not significant, suggesting no significant combined effect between these pairs of factors. However, the three-way interaction among “monitors,” “source,” and “argument” was significant (F(1, 88) = 26.66, p \< 0.001). This indicates that the combined influence of any two factors on the outcome depends on the level of the third factor.
+
+# Question 4
+
+Now explore your results a bit deeper, first using Frequentist statistics. Take the highest order interaction that is significant, and use interaction contrasts to explain it. Always report frequentist inferential statistics, including confidence intervals with your chosen contrasts. You should perform whatever analysis is necessary to explain the pattern of the highest-order interaction, but not more. That means, it is likely not necessary to e.g., produce all possible pair-wise comparisons. Provide a short write-up of your result. Expected length is about 1-2 paragraphs.
+
+```{r}
+test(contrast(emmeans(lm, specs = c("monitors","source", "argument")), 
+              interaction = "consec"), joint = TRUE) |>
+  mutate(p.value = pvalue(p.value)) |>
+  kable(digits = c(2, 2, 2, 3),
+        caption = "Highest Order Interaction Analysis Results")
+
+summary(contrast(emmeans(lm, ~ monitors * source | argument), 
+              interaction = "consec"), infer = TRUE) |>
+  mutate(p.value = pvalue(p.value)) |>
+  rename(lower.CI = lower.CL, 
+         upper.CI = upper.CL,
+         monitors = monitors_consec,
+         source = source_consec) |>
+  kable(digits = c(0, 0, 0, 2, 2, 2, 2, 2, 2, 3),
+        caption = "Frequentist Interaction Contrasts Analysis Results")
+
+summary(contrast(emmeans(lm, ~ monitors | source * argument), 
+              interaction = "consec"), infer = TRUE) |>
+  mutate(p.value = pvalue(p.value)) |>
+  rename(lower.CI = lower.CL, 
+         upper.CI = upper.CL,
+         monitors = monitors_consec) |>
+  kable(digits = c(0, 0, 0, 2, 2, 2, 2, 2, 2, 3),
+        caption = "Frequentist Interaction Contrasts Analysis Results")
+```
+
+Based on the highest order interaction analysis, the highest order interaction in the study design is a three-way interaction. Thus, further analysis examines the conditional two-way interactions whose difference comprises the three-way interaction. For “strong” arguments, there was a significant difference in how monitors impacted “expert” and “attractive” sources, with a negative estimate of -3.83 (p \< 0.001), indicating that “high” monitors reduced outcomes more for “expert” sources than for “attractive” sources. For “weak” arguments, the difference between “expert” and “attractive” sources was not significant (estimate = 1.00, p = 0.134).
+
+Then, an additional analysis explains how two two-way interactions differ by examining the conditional effects that make up the two-way interaction. When breaking down the interaction further, increasing monitor levels from “low” to “high” affected outcomes within each source (“attractive” and “expert”) for “strong” and “weak” arguments. For “strong” arguments, increasing monitor levels led to a significant increase for “attractive” sources (estimate = 1.75, p \< 0.001) but a significant decrease for “expert” sources (estimate = -2.08, p \< 0.001). For “weak” arguments, neither “attractive” (estimate = -0.42, p = 0.376) nor “expert” sources (estimate = 0.58, p = 0.216) showed significant changes when monitor levels were increased. This indicates that monitor levels have a substantial impact on strong arguments but less influence on weak ones, with differing effects based on source type.
+
+# Question 5
+
+Redo the analysis using Bayesian statistics, first focusing only on Bayes Factors. In particular, report Bayes Factors that compare a null model against all other possible models. Then report Bayes Factors that compare the most complex models to all other possible models. Both of these sets of Bayes Factors can be obtained by the BayesFactor package using a single line of code. Examining all Bayes Factors, which model is most preferred? Interpret the results of these two sets of Bayes Factors. Expected length is about 1-2 paragraphs.
+
+```{r message=FALSE, warning=FALSE}
+anovaBF(value ~ 1 + monitors * source * argument, data = df) |>
+  extractBF() |>
+  select(-error, -time, -code) |>
+  kable(digits = 2, 
+        caption = "Bayes Factors of Null Model")
+
+anovaBF(value ~ 1 + monitors * source * argument, data = df, 
+        whichModels = "top") |>
+  extractBF() |>
+  select(-error, -time, -code) |>
+  kable(digits = 2, 
+        caption = "Bayes Factors of Complex Model")
+```
+
+In the first part of the analysis, Bayes Factors were used to compare each model against a null (intercept-only) model. The full model, containing all main effects (monitors, argument, and source) as well as all two-way and three-way interactions among these variables, showed a very high Bayes Factor (24594.86), indicating strong evidence for this model over the null. This large value reflects the strong predictive capability and relevance of including these predictors and their interactions in explaining the observed data.
+
+In the second part, comparisons were made with the full model used as a baseline. Simpler models, including those omitting the three-way interaction, were tested against it. Here, a very small Bayes Factor (close to 0) for the reduced models provided strong evidence favoring the full model over these alternatives. This result emphasizes the critical role of the three-way interaction among monitors, argument, and source in capturing meaningful variance in the data. A small Bayes Factor in this context signals that omitting the interaction results in a substantially worse fit, reinforcing the necessity of maintaining this interaction in the model. These analyses confirm that the full model, with all main effects and interactions, offers the most comprehensive and supported explanation for the outcome.
+
+# Question 6
+
+Code and estimate a contrast (and report it along both Frequentist confidence intervals, and Bayesian credible intervals) that answers the following research question: Averaging over the variable “monitors”, how large is the difference between the conditional effect of “source” within the “strong argument” stratum, and the conditional effect of “source” within the “weak argument” stratum? For all priors, always use a normal distribution centered on 0 with standard deviation of 3.
+
+```{r message=FALSE, warning=FALSE}
+summary(emmeans(lm, specs = c("monitors", "source", "argument"), 
+                contr = list(c1 = c(0.5, 0.5, -0.5, -0.5, 
+                                    -0.5, -0.5, 0.5, 0.5)), 
+                infer = TRUE))$contrasts |>
+  mutate(p.value = pvalue(p.value)) |>
+  rename(lower.CI = lower.CL, upper.CI = upper.CL) |>
+  kable(digits = c(0, 2, 2, 2, 2, 2, 2, 3),
+        caption = "Frequentist Analysis Results")
+```
+
+```{r results = "hide", cache=TRUE}
+set.seed(5750)
+blm <- stan_glm(value ~ 1 + monitors * source * argument, 
+                family = gaussian(), data = df,
+                prior_intercept = normal(0, 3, autoscale = TRUE),
+                prior = normal(0, 3, autoscale = TRUE),
+                iter = 40000)
+```
+
+```{r message=FALSE, warning=FALSE}
+set.seed(5750)
+describe_posterior(emmeans(blm, specs = c("monitors", "source", "argument"), 
+                contr = list(c1 = c(0.5, 0.5, -0.5, -0.5, 
+                                    -0.5, -0.5, 0.5, 0.5)))$contrasts, 
+                   test = "bayesfactor", bf_prior = blm) |>
+  mutate(BF = exp(log_BF)) |>
+  select(-log_BF) |>
+  kable(digits = c(0, 2, 2, 2, 2, 2),
+        caption = "Bayesian Analysis Results")
+```
+
+# Question 7
+
+Compute an equivalence test (using both a frequentist approach that yields a p-value, and a Bayesian approach that yields a Bayes Factor) to answer the question whether the null hypothesis of non-equivalence can be rejected (or in the Bayesian domain whether the hypothesis of equivalence can be supported when compared to a diffuse alternative) for the following contrast and null-region: is the difference between an attractive source and an expert source when presented with a weak argument, and averaged over high and low self-monitors equivalent when considering a practical region of equivalence that stretches from -.4 to .4 and is centered around 0. For the Bayesian analysis please use the bayesfactor_parameters() function as outlined in the codebook.
+
+```{r message=FALSE, warning=FALSE}
+summary(emmeans(lm, specs = c("monitors", "source", "argument"),
+                contr = list(c1 = c(0, 0, 0, 0, 
+                                    0.5, 0.5, -0.5, -0.5)), 
+                side = "equivalence",
+                null = 0, delta = 0.4), infer=TRUE)$contrasts |>
+  mutate(p.value = pvalue(p.value)) |>
+  rename(lower.CI = lower.CL, upper.CI = upper.CL) |>
+  kable(digits = c(0, 2, 2, 2, 2, 2, 2, 3),
+        caption = "Frequentist Analysis Comparison")
+```
+
+```{r message=FALSE, warning=FALSE}
+set.seed(5750)
+bayesfactor_parameters((emmeans(blm, 
+                                specs = c("monitors", "source", "argument"),
+                                contr = list(c1 = c(0, 0, 0, 0, 
+                                                   0.5, 0.5, 
+                                                   -0.5, -0.5)))$contrasts),
+                               prior = blm, null = c(-0.4, 0.4)) |>
+  mutate(BF = exp(log_BF)) |>
+  select(-log_BF) |>
+  kable(digits = 2,
+        caption = "Bayesian Analysis Comparison")
+```
+
+# Question 8
+
+When reporting a significant two-way interaction in a design with three independent variables, it is important to consider the role of the three-way interaction, as it can modify or refine the interpretation of the two-way effect. A significant two-way interaction suggests that the effect of one variable on the dependent variable depends on the levels of the second variable. However, in a three-way design, this relationship can be further influenced by the third variable, meaning that the interaction may not be consistent across all conditions. If the three-way interaction is significant but not reported, the interpretation of the two-way interaction could be misleading, as it might overestimate or underestimate the relationship between the variables by ignoring how the third variable affects it.
+
+For example, if there is a significant three-way interaction, the effect of one independent variable on the dependent variable might differ depending on the specific combination of the other two variables. Simply reporting the two-way interaction would fail to capture the complexity of this relationship, leading to incomplete conclusions. This could also result in drawing incorrect or overly simplistic conclusions about the nature of the effects, as the influence of one variable could be entirely contingent on the other two. Thus, to provide a more accurate and nuanced understanding of the results, both the two-way and three-way interactions should be reported, as they offer complementary insights into how the independent variables jointly influence the outcome.
+
+# Question 9
+
+The key assumption in fractional designs is that higher-order interactions (such as three-way or four-way interactions) are negligible or not of primary interest. This assumption is crucial because in a fractional design, some of the main effects and interactions are aliased, meaning that they are confounded with each other. As a result, the effect of one factor could be mixed with the effect of another, making it impossible to distinguish between certain factors or interactions. To interpret the results of fractional factorial designs accurately, it is assumed that the effects of these aliased interactions are either small or irrelevant, which allows researchers to focus on the more important main effects and lower-order interactions. If the higher-order interactions are substantial or critical to the research question, then fractional designs might lead to biased or misleading conclusions. Thus, while fractional designs are efficient, they require careful consideration of which factors and interactions are likely to have meaningful effects and ensuring that the assumptions of negligible higher-order interactions hold true.
+
+# Question 10
+
+| P   | Y_0 | Y_1 | N (T = 0) | N (T = 1) |
+|-----|-----|-----|-----------|-----------|
+| D   | 1.0 | 1.5 | 212       | 266       |
+| R   | 0.9 | 1.3 | 209       | 201       |
+| I   | 0.9 | 0.1 | 22        | 90        |
+
+$$
+\text{ATE} = \frac{(212 + 266) \times (1.5 - 1.0) + (209 + 201) \times (1.3 - 0.9) + (22 + 90) \times (0.1 - 0.9)} {(212 + 266 + 209 + 201 + 22 + 90)}
+$$
+
+$$
+\text{ATE} = \frac{478 \times 0.5 + 410 \times 0.4 + 112 \times -0.8}{1000} = 0.3134
+$$
+
+$$
+\text{PF} = \frac{266 \times 1.5 + 201 \times 1.3 + 90 \times 0.1} {266 + 201 + 90} - \frac{212 \times 1.0 + 209 \times 0.9 + 22 \times 0.9} {212 + 209 + 22}
+$$
+
+$$
+\text{PF} = \frac{669.3} {557} - \frac{419.9} {443} = 0.2538
+$$
+
+$$
+\text{Type III SS} = (\frac{1.5}{3} + \frac{1.3}{3} + \frac{0.1}{3}) - (\frac{1.0}{3} + \frac{0.9}{3} + \frac{0.9}{3})
+$$
+
+$$
+\text{Type III SS} = \frac{2.9}{3} - \frac{2.8}{3} = 0.0333
+$$
+
+$$
+\text{WMM} = (1.5 \times \frac{478} {1000} + 1.3 \times \frac{410} {1000} + 0.1 \times \frac{112} {1000}) - (1.0 \times \frac{478} {1000} + 0.9 \times \frac{410} {1000} + 0.9 \times \frac{112} {1000})
+$$
+
+$$
+\text{WMM} = 1.2612 - 0.9478 = 0.3134
+$$
+
+| ATE    | PF     | Type III SS | WMM    |
+|--------|--------|-------------|--------|
+| 0.3134 | 0.2538 | 0.0333      | 0.3134 |
+
+The Average Treatment Effect (ATE) and Weighted Marginal Means (WMM) both account for the differences in sample sizes across the groups, and as a result, they provide the same estimate of 0.3134. The ATE represents the overall treatment effect, calculated using the potential outcomes for all groups, while the WMM incorporates sample size weighting to adjust for the unbalanced design. Since both methods weight the groups accordingly, they give a more accurate and representative estimate of the treatment effect compared to methods that do not account for sample size differences.
+
+In contrast, the Prima-Facie Treatment Effect (PF), which is unadjusted, gives a smaller estimate of 0.2538. This value does not account for the unequal sample sizes and thus underestimates the true treatment effect. The Type III Sum of Squares (Type III SS) value of 0.0333 also underestimates the treatment effect, as it is calculated without considering the unbalanced design, treating all groups as though they have equal sample sizes. This leads to a biased estimate that fails to reflect the real differences between the treatment and control groups, highlighting the importance of using weighted methods when working with unbalanced data.

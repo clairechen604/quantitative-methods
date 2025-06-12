@@ -1,0 +1,379 @@
+---
+title: "HW 5"
+author: "Claire Chen"
+date: today
+format: pdf
+editor: visual
+---
+
+```{r, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(BayesFactor)
+library(knitr)
+library(broom)
+library(report)
+library(patchwork)
+```
+
+# Question 1
+
+Simulate a SINGLE sample of size n = 75, drawn from a normal distribution with mean 5, and standard deviation of 2.5. Remember to use the seed number 5750. Then using the normal distribution likelihood, construct a likelihood function for just the mean, assuming that the standard deviation is known to be 2.5. Plot this likelihood function (x-axis is assumed parameter, y-axis is likelihood) from a parameter range from -10 to 10, with steps of .01 in between. Draw a vertical line on this plot that denotes the maximum likelihood estimate.
+
+```{r, message=FALSE}
+mu_values <- seq(-10, 10, by = 0.01)
+df <- tibble(mu_values)
+
+set.seed(5750)
+sample1 <- rnorm(75, 5, 2.5)
+
+likelihood <- function(mu) {
+  prod(dnorm(sample1, mean = mu, sd = 2.5))
+}
+
+df <- mu_values %>% 
+  map_dbl(~ likelihood(.x)) %>% 
+  tibble(ll = ., mu_values = mu_values)
+
+df[which.max(df$ll),]$mu_values -> max1
+
+ggplot(df, aes(x = mu_values, y = ll)) +
+  geom_line(color = "blue") +
+  geom_vline(xintercept = max1, 
+             linetype = "dashed",
+             color = "black", linewidth = 0.3) +
+  labs(title = "Likelihood Function for the Mean", 
+       x = "Mean", y = "Likelihood")
+```
+
+# Question 2
+
+Conduct a series of likelihood ratio tests in which you compare: the MLE with the value 3; the MLE with the value 5; the value 4 with the value 6. For each of these three comparisons, report the likelihood ratio and write one sentence that explains which value has more support from the likelihood. It does not matter whether you form the ratio a/b or b/a, as the interpretation does not change.
+
+```{r}
+likelihood_ratios <- tibble(
+  Ratio = c("MLE vs. 3", "MLE vs. 5", "4 vs. 6"),
+  Value = c(likelihood(max1) / likelihood(3),
+            likelihood(max1) / likelihood(5),
+            likelihood(4) / likelihood(6))
+  )
+
+likelihood_ratios |>
+  kable(caption = "Likelihood Ratios")
+```
+
+For MLE vs. 3, since the ratio is greater than 1, MLE has more support from the likelihood. For MLE vs. 5, since the ratio is slightly greater than 1, both MLE and 5 have similar support from the likelihood, though MLE has marginally more support. For 4 vs. 6, since the ratio is greater than 1, 4 has more support from the likelihood.
+
+# Question 3
+
+Plot four different prior distributions that could be used in the context of estimating a mean from a sample. A normal distribution centered around 5, with a standard deviation of 1.5 (a “looking glass prior” that is centered right on the true population value). A normal distribution centered around 0, with a standard deviation of 3 (a weakly informative prior). A uniform distribution ranging from -10 to 10 (an uninformative prior). A normal distribution centered on -6, with a standard deviation of 1 (a wrong, and informative prior). Please display these four different plots in a small two by two grid, but make sure that both the x-axis and the y-axis have the same range for all plots. Please span the x-axis from -10 to 10, and the y-axis from 0 to 0.4.
+
+```{r}
+prior1 <- dnorm(mu_values, mean = 5, sd = 1.5)
+prior2 <- dnorm(mu_values, mean = 0, sd = 3)
+prior3 <- ifelse(mu_values >= -10 & mu_values <= 10, 1/20, 0)
+prior4 <- dnorm(mu_values, mean = -6, sd = 1)
+
+priors_df <- tibble(
+  x = mu_values,
+  prior1 = prior1,
+  prior2 = prior2,
+  prior3 = prior3,
+  prior4 = prior4
+)
+
+prior1_plot <- ggplot(priors_df, aes(x = x, y = prior1)) +
+  geom_line(color = "blue") +
+  ylim(0, 0.4) + xlim(-10, 10) +
+  theme(plot.title = element_text(size = 8)) +
+  labs(title = "Looking Glass Prior (Mean = 5, SD = 1.5)", 
+       x = "Mean", y = "Density")
+
+prior2_plot <- ggplot(priors_df, aes(x = x, y = prior2)) +
+  geom_line(color = "forestgreen") +
+  ylim(0, 0.4) + xlim(-10, 10) +
+  theme(plot.title = element_text(size = 8)) +
+  labs(title = "Weakly Informative Prior (Mean = 0, SD = 3)", 
+       x = "Mean", y = "Density")
+
+prior3_plot <- ggplot(priors_df, aes(x = x, y = prior3)) +
+  geom_line(color = "tan") +
+  ylim(0, 0.4) + xlim(-10, 10) +
+  theme(plot.title = element_text(size = 8)) +
+  labs(title = "Uniform Prior (-10 to 10)", 
+       x = "Mean", y = "Density")
+
+prior4_plot <- ggplot(priors_df, aes(x = x, y = prior4)) +
+  geom_line(color = "purple") +
+  ylim(0, 0.4) + xlim(-10, 10) +
+  theme(plot.title = element_text(size = 8)) +
+  labs(title = "Wrong Informative Prior (Mean=-6, SD=1)", 
+       x = "Mean", y = "Density")
+
+combined_prior_plot <- (prior1_plot + prior2_plot) / 
+  (prior3_plot + prior4_plot)
+combined_prior_plot
+```
+
+# Question 4
+
+Using the obtained likelihood, and each of the four prior distributions from question 3, construct four posterior distributions for the mean. For this assignment do this by simply multiplying prior and likelihood on a fine grid (in reality we would either use an analytic approach in the case of conjugate priors, or sampling approaches). The grid should range from -10 to 10 in steps of .01, just like the grid we used for the likelihood. We can continue to assume that the standard deviation is known and fixed to the same value as previously, so you only need to compute a posterior for the estimate of the mean. Plot all four posterior distributions (in a two by two grid), and draw one line for the obtained mode of the distribution (also know as the maximum a-posteriori or MAP estimate), and then two lines that denote the endpoints of a 95% (equal-tail) credible interval. Describe the results with 1-2 sentences for each distribution.
+
+```{r}
+posterior1 <- df$ll * prior1 / sum(df$ll * prior1)
+posterior2 <- df$ll * prior2 / sum(df$ll * prior2)
+posterior3 <- df$ll * prior3 / sum(df$ll * prior3)
+posterior4 <- df$ll * prior4 / sum(df$ll * prior4)
+
+map_ci_function <- function(posterior) {
+  map_estimate <- mu_values[which.max(posterior)]
+  ci_low <- mu_values[which(cumsum(posterior) >= 0.025)[1]]
+  ci_high <- mu_values[which(cumsum(posterior) >= 0.975)[1]]
+  list(MAP = map_estimate, CI_low = ci_low, CI_high = ci_high)
+}
+
+map_ci <- list(
+  map_ci_function(posterior1),
+  map_ci_function(posterior2),
+  map_ci_function(posterior3),
+  map_ci_function(posterior4)
+)
+
+posterior1_plot <- ggplot(data.frame(x = mu_values, posterior = posterior1), 
+                          aes(x, posterior)) +
+  geom_line(color = "blue") +
+  ylim(0, 0.015) + xlim(-10, 10) +
+  geom_vline(xintercept = map_ci[[1]]$MAP, 
+             linetype = "dashed", color = "black") +
+  geom_vline(xintercept = map_ci[[1]]$CI_low, 
+             linetype = "dotted", color = "red") +
+  geom_vline(xintercept = map_ci[[1]]$CI_high, 
+             linetype = "dotted", color = "red") +
+  theme(plot.title = element_text(size = 8)) +
+  labs(title = "Posterior with Looking Glass Prior", 
+       x = "Mean", 
+       y = "Posterior Density")
+
+posterior2_plot <- ggplot(data.frame(x = mu_values, posterior = posterior2),
+                          aes(x = x, y = posterior)) +
+  geom_line(color = "forestgreen") +
+  ylim(0, 0.015) + xlim(-10, 10) +
+  geom_vline(xintercept = map_ci[[2]]$MAP, 
+             linetype = "dashed", color = "black") +
+  geom_vline(xintercept = map_ci[[2]]$CI_low, 
+             linetype = "dotted", color = "red") +
+  geom_vline(xintercept = map_ci[[2]]$CI_high, 
+             linetype = "dotted", color = "red") +
+  theme(plot.title = element_text(size = 8)) +
+  labs(title = "Posterior with Weakly Informative Prior", 
+       x = "Mean", 
+       y = "Posterior Density")
+
+posterior3_plot <- ggplot(data.frame(x = mu_values, posterior = posterior3),
+                          aes(x = x, y = posterior)) +
+  geom_line(color = "tan") +
+  ylim(0, 0.015) + xlim(-10, 10) +
+  geom_vline(xintercept = map_ci[[3]]$MAP, 
+             linetype = "dashed", color = "black") +
+  geom_vline(xintercept = map_ci[[3]]$CI_low, 
+             linetype = "dotted", color = "red") +
+  geom_vline(xintercept = map_ci[[3]]$CI_high, 
+             linetype = "dotted", color = "red") +
+  theme(plot.title = element_text(size = 8)) +
+  labs(title = "Posterior with Uniform Prior", 
+       x = "Mean", 
+       y = "Posterior Density")
+
+posterior4_plot <- ggplot(data.frame(x = mu_values, posterior = posterior4),
+                          aes(x = x, y = posterior)) +
+  geom_line(color = "purple") +
+  ylim(0, 0.015) + xlim(-10, 10) +
+  geom_vline(xintercept = map_ci[[4]]$MAP, 
+             linetype = "dashed", color = "black") +
+  geom_vline(xintercept = map_ci[[4]]$CI_low, 
+             linetype = "dotted", color = "red") +
+  geom_vline(xintercept = map_ci[[4]]$CI_high, 
+             linetype = "dotted", color = "red") +
+  theme(plot.title = element_text(size = 8)) +
+  labs(title = "Posterior with Wrong Informative Prior", 
+       x = "Mean", 
+       y = "Posterior Density")
+
+combined_posterior_plot <- (posterior1_plot + posterior2_plot) / 
+  (posterior3_plot + posterior4_plot)
+combined_posterior_plot
+```
+
+For posterior distribution with looking glass prior, it is sharply peaked around the true population mean of x = 5, indicating strong support for this value given the data. The 95% credible interval sits around the true population mean, suggesting high confidence in the estimate.
+
+For posterior distribution with weakly informative prior, it also centers around the true mean of x = 5 but is slightly wider than the looking glass prior’s posterior distribution. The 95% credible interval is shifted to the left, but the evidence from the data still strongly supports values around the true mean.
+
+For posterior distribution with uniform prior, it results in a more spread-out posterior distribution, reflecting the lack of prior information. While the the distribution is still near x = 5, the 95% credible interval is also shifted to the left, but the evidence from the data still supports values around the true mean.
+
+For posterior distribution with wrong informative prior, it is skewed and shifted towards x = 4. This result highlights the influence of the incorrect prior and it strongly affects the posterior distribution, leading to misleading estimates away from the true population mean. The 95% credible interval also reflects this misalignment, which includes values that do not align with the data.
+
+# Question 5
+
+Repeat the same exercise of generating a grid for prior, likelihood and posterior, but this time only with the last (strong, and incorrect) prior of 𝑁 ∼ (−6, 1). This time generate a new SINGLE sample from the same population distribution but with a size of n = 275. Following all the steps above, construct the posterior distribution and plot it along with a line for the MAP and the 95% credible intervals. Note that you can likely recycle all of the code that you used above. Describe the difference in the posterior distribution that you obtain here when compared to the posterior distribution of the same prior that you constructed previously. Expected length is about 1-2 sentences.
+
+```{r}
+set.seed(5750)
+sample2 <- rnorm(275, 5, 2.5)
+
+likelihood2 <- function(mu) {
+  prod(dnorm(sample2, mean = mu, sd = 2.5))
+}
+
+df2 <- mu_values %>% 
+  map_dbl(~ likelihood2(.x)) %>% 
+  tibble(ll = ., mu_values = mu_values)
+
+posterior4new <- df2$ll * prior4 / sum(df2$ll * prior4)
+
+map_ci4new <- map_ci_function(posterior4new)
+
+ggplot(data.frame(x = mu_values, posterior = posterior4new),
+                          aes(x = x, y = posterior)) +
+  geom_line(color = "purple") +
+  geom_vline(xintercept = map_ci4new$MAP, 
+             linetype = "dashed", color = "black") +
+  geom_vline(xintercept = map_ci4new$CI_low, 
+             linetype = "dotted", color = "red") +
+  geom_vline(xintercept = map_ci4new$CI_high, 
+             linetype = "dotted", color = "red") +
+  labs(title = "Posterior with Wrong Informative Prior (n = 275)", 
+       x = "Mean", 
+       y = "Posterior Density")
+```
+
+Although the wrong informative prior influence still persists, the larger sample size results in a more concentrated posterior distribution closer to the true sample mean. The MAP estimate is still biased toward the left of x = 5, but the 95% credible interval is closer to capturing the true sample mean, suggesting that with a larger sample size, the resulting posterior distribution is more accurate, though the incorrect prior still influences the posterior.
+
+# Question 6
+
+Now, compute a series of Bayes Factors (BFs) by hand, using the original n=75 dataset from your first question. Please note that going forward you will not compute BFs this way, and the grid approximation used here is likely imprecise, but still useful for this exercise. As you recall from class, a BF is ALWAYS a comparison between two competing hypotheses. Please compute BFs for the following hypotheses: 𝐻0 ∶ 𝜇 = 5; 𝐻1 ∶ 𝜇 ∼ 𝑁 (5, 5), comparing a point-null (centered on 5) against a diffuse alternative; 𝐻0 ∶ 𝜇 = 3; 𝐻1 ∶ 𝜇 ∼ 𝑈 (4, 5), comparing a different point-null against a uniform region of equivalence; 𝐻0 ∶ 𝜇 ∼ 𝑈 (−5, 5); 𝐻1 ∶ 𝜇 ∼ 𝛾(3, 2), comparing a wide uniform prior against a gamma distribution with shape parameter 3 and scale parameter 2 (yields a positive-values only prior). Describe each resulting BF with 1-2 sentences.
+
+```{r}
+df$priorh0_1 <- ifelse(mu_values == 5, 1, 0)
+
+df$priorh1_1 <- dnorm(mu_values, mean = 5, sd = 5)
+df$priorh1_1 <- df$priorh1_1 / sum(df$priorh1_1)
+
+df <- df %>%
+  mutate(ml_h0_1 = ll * priorh0_1,
+         ml_h1_1 = ll * priorh1_1)
+
+ml_h0_1 <- sum(df$ml_h0_1)
+ml_h1_1 <- sum(df$ml_h1_1)
+
+bf_1 <- ml_h1_1 / ml_h0_1
+print(formatC(bf_1, format = "e"))
+```
+
+```{r}
+df$priorh0_2 <- ifelse(mu_values == 3, 1, 0)
+
+df$priorh1_2 <- ifelse(mu_values >= 4 & mu_values <= 5, 1, 0)
+df$priorh1_2 <- df$priorh1_2 / sum(df$priorh1_2)
+
+df <- df %>%
+  mutate(ml_h0_2 = ll * priorh0_2,
+         ml_h1_2 = ll * priorh1_2)
+
+ml_h0_2 <- sum(df$ml_h0_2)
+ml_h1_2 <- sum(df$ml_h1_2)
+
+bf_2 <- ml_h1_2 / ml_h0_2
+print(formatC(bf_2, format = "e"))
+```
+
+```{r}
+df$priorh0_3 <- ifelse(mu_values >= -5 & mu_values <= 5, 1, 0)
+df$priorh0_3 <- df$priorh0_3 / sum(df$priorh0_3)
+
+df$priorh1_3 <- dgamma(mu_values, shape = 3, scale = 2)
+df$priorh1_3 <- df$priorh1_3 / sum(df$priorh1_3)
+
+df <- df %>%
+  mutate(ml_h0_3 = ll * priorh0_3,
+         ml_h1_3 = ll * priorh1_3)
+
+ml_h0_3 <- sum(df$ml_h0_3)
+ml_h1_3 <- sum(df$ml_h1_3)
+
+bf_3 <- ml_h1_3 / ml_h0_3
+print(formatC(bf_3, format = "e"))
+```
+
+For the first hypothesis, the resulting BF = 9.20 x 10^-2^ is less than 1, which means that there is strong evidence from the data supporting the diffuse alternative hypothesis as compared to the point-null hypothesis.
+
+For the second hypothesis, the resulting BF = 9.75 x 10^7^ is much greater than 1, which means that there is extreme evidence from the data supporting the point-null hypothesis as compared to the uniform region of equivalence.
+
+For the third hypothesis, the resulting BF = 1.90 is marginally greater than 1, which means that there is anecdotal evidence, but not worth more than a bare mention, from the data supporting the wide uniform prior as compared to the gamma distribution with shape parameter 3 and scale parameter 2.
+
+# Question 7
+
+In an earlier homework, you simulated data under repeated testing and learned about the behavior of the p-value under a true and false null. Repeat the same exercise for the BF, by doing the following. First, draw a sample of size n=100 from the usual population distribution, 𝑁 ∼ (5, 2.5). For simplicity, we will just use a convenience function, ttestBF, from the BayesFactor package. By default it will posit a point null hypothesis against a diffuse alternative centered on the null, but with spread defined by the Cauchy distribution (a distribution with slightly fatter tails than the normal). The codebook provides some code to compute a BF for each observation. Compute and plot 99 BFs (from n = 2 to n = 100) and then plot the BF on the y-axis and the sample size on the x-axis. Then repeat this process, but this time, draw a sample from a population distribution in which the point null is true. That means draw a sample of size n = 100 from a distribution that is centered on 0, 𝑁 ∼ (0, 2.5). Compute the 99 BFs and plot them. Arrange the two lineplots using the patchwork package, and ensure that the axes are chosen wisely. Describe this combined plot, and what it implies. Expected length is about 2-3 sentences.
+
+```{r}
+set.seed(5750)
+sample_false_null <- rnorm(100, 5, 2.5)
+
+bf_false_null <- numeric(length(sample_false_null))
+
+for (i in 2:100) {
+  subset_data <- sample_false_null[1:i]
+  exp(ttestBF(x = subset_data)@bayesFactor$bf) -> bf_false_null[i]
+}
+
+bf_df_false <- tibble(
+  sample_size = 2:100,
+  bf = bf_false_null[2:100])
+
+set.seed(5750)
+sample_true_null <- rnorm(100, 0, 2.5)
+
+bf_true_null <- numeric(length(sample_true_null))
+
+for (i in 2:100) {
+  subset_data <- sample_true_null[1:i]
+  exp(ttestBF(x = subset_data)@bayesFactor$bf) -> bf_true_null[i]
+}
+
+bf_df_true <- tibble(
+  sample_size = 2:100,
+  bf = bf_true_null[2:100])
+
+plot_false <- ggplot(bf_df_false, aes(x = sample_size, y = bf)) +
+  geom_line(color = "black") +
+  theme(plot.title = element_text(size = 10)) +
+  labs(title = "Bayes Factors: False Null 
+       Hypothesis (N ~ N(5, 2.5))",
+       x = "Sample Size", y = "BF")
+
+plot_true <- ggplot(bf_df_true, aes(x = sample_size, y = bf)) +
+  geom_line(color = "black") +
+  theme(plot.title = element_text(size = 10)) +
+  labs(title = "Bayes Factors: True Null 
+       Hypothesis (N ~ N(0, 2.5))",
+       x = "Sample Size", y = "BF")
+
+combined_plot <- plot_false + plot_true
+combined_plot
+```
+
+For the plot with false null hypothesis, the Bayes Factor increases steadily as the sample size increases, indicating stronger evidence against the point null hypothesis. For the plot with true null hypothesis, the Bayes Factor fluctuates initially with small sample sizes but gradually converges towards a lower value as sample size increases, indicating support for the null hypothesis. The plots imply that Bayes Factor is sensitive to sample sizes, and as sample size increases, BF becomes more decisive and provides more informative supporting information for which hypothesis to favor.
+
+# Question 8
+
+Only using to Bayesian logic, both researchers should obtain the same Bayes Factor in this scenario, regardless of Researcher B's mid-way examination at n = 50. This is because the Bayes Factor is inherently based on the likelihood of the observed data given a hypothesis, combined with prior distributions. Bayesian inference is a cumulative process that updates beliefs based on the total evidence, without being dictated by a specific stopping rule, or when data are being examined.
+
+In the current scenario, both researchers end up with the exact same data and use the same prior distributions. Researcher A conducts the Bayesian hypothesis test without mid-way checks, while Researcher B looks at the data mid-way but continues collecting until n = 100. Bayesian analysis focuses solely on the final data set and the priors, meaning that the path by which the data are collected does not affect the computation of the Bayes Factor. Hence, if both researchers have the same data and use the same prior, their Bayes Factors will be identical, as the posterior beliefs depend only on the complete data set, not the process of mid-way examination of data.
+
+# Question 9
+
+In Bayesian inference, priors represent initial beliefs, and these are updated using the likelihood of observed data to form posteriors. When two researchers start with very different priors, their initial beliefs about a parameter may differ significantly. However, as more data is observed, the influence of the prior diminishes, and the likelihood dominates the posterior. This occurs because, with increasing data, the likelihood concentrates more tightly around the true parameter value, overwhelming the differences in the initial priors. As a result, regardless of their starting points, both researchers’ posteriors will increasingly reflect the same information provided by the data, leading them to converge on similar conclusions as their views are driven primarily by the observed evidence rather than their initial beliefs.
+
+# Question 10
+
+In this scenario, the Bayes Factor favors H0 over H1, despite both being incorrect. The reason for this is that H1's diffuse distribution spreads probability mass over a wide range, including very extremes values far from the true mean of 5. This results in a lower likelihood for the observed data under H1 because its prior assigns little weight to values close to the true population parameter. In contrast, H0 is a point hypothesis centered on 0, and although incorrect, it is more concentrated, which can make it seem more compatible with the data.
+
+This reveals a potential issue with Bayes Factors, which is that they can favor more concentrated hypotheses, like H0, even when those hypotheses are wrong, simply because diffuse priors, like H1, dilute their likelihood over a vast range. This highlights the importance of carefully selecting priors in Bayesian analysis. Overly diffuse priors in the alternative hypothesis can skew results, favoring the null hypothesis by default rather than providing an accurate comparison between the two. This means that we must use more realistic or informed priors to avoid this issue.

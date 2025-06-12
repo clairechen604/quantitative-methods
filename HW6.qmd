@@ -1,0 +1,321 @@
+---
+title: "HW 6"
+author: "Claire Chen"
+date: today
+format: pdf
+editor: visual
+---
+
+```{r, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(easystats)
+library(knitr)
+library(scales)
+library(broom)
+library(rstanarm)
+library(BFpack)
+library(emmeans)
+library(brms)
+library(BayesFactor)
+library(rethinking)
+library(janitor)
+```
+
+# Question 1
+
+First, import the data and generate a histogram with an overlaid kernel density estimate of the annual salary scores. Describe the shape of the distribution. Expected length is about 2-3 sentences.
+
+```{r}
+df <- read.csv(
+  "https://github.com/felixthoemmes/hwdatasets/blob/master/Chicago.csv?raw=TRUE")
+
+df <- df |>
+  mutate(
+    Department = as.factor(Department),
+    Employee.Annual.Salary = as.numeric(Employee.Annual.Salary))
+
+ggplot(df, aes(x = Employee.Annual.Salary)) +
+  geom_histogram(aes(y = after_stat(density)), 
+                 bins = 30, fill = "pink", color = "black", alpha = 0.5) +
+  geom_density(fill = "lightblue", alpha = 0.5, adjust = 3) +
+  labs(title = "Histogram with Kernel Density Estimate", 
+       x = "Employee Annual Salary", 
+       y = "Density")
+```
+
+The distribution displays a fairly normal distribution that is slightly skewed to the right. The majority of the distribution is centered around x = 80,000 with a few outliers around x = 0 and x = 160,000.
+
+# Question 2
+
+Compute the overall mean and the overall standard deviation of salary in the sample. Then, compute mean and standard deviation of the salaries in the following two departments: the police department (factor level “POLICE”) and the fire department (factor level “FIRE”). Present all these descriptive statistics in a single table. In addition to the descriptive statistics above, also generate an overlaid kernel density estimate of the annual salary split by fire department and police department.
+
+```{r}
+summary_by_dept <- df |>
+  group_by(Department) |>
+  summarize(Mean = mean(Employee.Annual.Salary),
+            SD = sd(Employee.Annual.Salary))
+
+summary_overall <- df |>
+  summarize(Mean = mean(Employee.Annual.Salary),
+            SD = sd(Employee.Annual.Salary)) |>
+  add_column(Department = "OVERALL", .before = 1)
+
+summary_stats <- bind_rows(summary_overall, summary_by_dept)
+
+summary_stats |>
+  kable(digits = 2,
+        caption = "Mean and SD of Annual Salary")
+
+ggplot(df, aes(x = Employee.Annual.Salary, fill = Department)) +
+  geom_density(alpha = 0.5, adjust = 3) +
+  labs(title = "Kernel Density of Annual Salary by Department", 
+       x = "Annual Salary", 
+       y = "Density")
+```
+
+# Question 3
+
+Perform a frequentist hypothesis test to determine whether the mean salary is significantly different from the average salary in the US in 2017. The average salary in 2017 was \$58,829. Then perform a Bayesian hypothesis test of the same hypothesis. The Bayes Factor should be based on a point-null hypothesis centered on 58,829, and the alternative should be a diffuse prior centered on the same value but distributed as a Cauchy distribution with scale factor 0.707. This is the default in the Bayes Factor package. You could also specify this prior in brms and use bridgesampling. If you use brms, a point-mass prior is not permitted, but you can use a uniform or normal that is very, very tight around the null value. You are not required to produce the results in both the BayesFactor package and brms. You can choose which package to use. For this, and other tests, do not use the convenience functions t.test() in R, but build your model using lm statements. Interpret your results and present them in tabular format (you do not need to combine all results in a single table). Expected length is about 1-2 sentences per analysis.
+
+```{r}
+lm <- lm(Employee.Annual.Salary ~ 1, data = df)
+
+lm <- emmeans(lm, specs = "1")
+
+summary(lm, infer = TRUE, null = 58829) |>
+  tidy() |> 
+  mutate(
+    p.value = pvalue(p.value)) |>
+  kable(caption = "Frequentist Analysis Summary Statistics",
+        digits = c(1, 2, 3, 0, 2, 2, 0, 2, 3),
+        col.names = c("Term", "Estimate", "SE", "df","Lower 95% CI",
+                      "Upper 95% CI", "null", "t", "p"))
+```
+
+Based on the results from the Frequentist analysis, since the p \< 0.001, we have convincing evidence to reject the null hypothesis. The results suggest that the mean salary is significantly different from the average salary in the US in 2017, which was \$58,829.
+
+```{r}
+set.seed(5750)
+blm <- ttestBF(df$Employee.Annual.Salary, mu = 58829)
+
+extractBF(blm, onlybf = TRUE) |> 
+  kable(caption ="BF", digits = 2, col.names = "BF")
+```
+
+Based on the results from the Bayesian analysis, since the BF approaches infinity, this means that there is overwhelming evidence supporting the alternative hypothesis. We have convincing evidence suggesting that the mean salary is significantly different from the average salary in the US in 2017, which was \$58,829.
+
+# Question 4
+
+Redo the previous analysis, but now focus on estimation, not hypothesis testing. Compute both a 95% confidence interval, and a 95% credible interval. For the Bayesian model use a prior on the intercept that is normally distributed, centered on \$58,829, with a standard deviation of 3. Use the autoscale = TRUE function in rstanarm, or adjust accordingly in brms. You can use the prior_summary() function from rstanarm to look more closely at the priors that were used, if you feel unsure about your priors. Interpret your results and present them in tabular format. Expected length is about 1-2 sentences per analysis.
+
+```{r}
+summary(lm, infer = TRUE, null = 58829) |>
+  tidy() |> 
+  mutate(
+    p.value = pvalue(p.value)) |>
+  kable(caption = "Frequentist Analysis 95% Confidence Interval",
+        digits = c(1, 2, 3, 0, 2, 2, 0, 2, 3),
+        col.names = c("Term", "Estimate", "SE", "df","Lower 95% CI",
+                      "Upper 95% CI", "null", "t", "p"))
+```
+
+Based on the 95% confidence interval of (88568.2, 90093.11), we have convincing evidence suggesting that the mean salary is significantly different from the average salary in the US in 2017 as it falls outside of the confidence interval, which was \$58,829.
+
+```{r cache=TRUE, results="hide", message=FALSE, warning=FALSE}
+detach("package:rethinking", unload = TRUE)
+
+set.seed(5750)
+blm2 <- stan_glm(Employee.Annual.Salary ~ 1, data = df, 
+                 prior_intercept = normal(58829, 3, autoscale = TRUE), 
+                 family = gaussian())
+```
+
+```{r}
+summary(emmeans(blm2, specs = "1")) |> 
+  kable(caption = "Bayesian Analysis 95% Credible Interval",
+        digits = c(1, 2, 2, 2), 
+        col.names = c("Term", "Estimate", "Lower 95% HDI", "Upper 95% HDI"))
+```
+
+Based on the 95% credible interval of (88592.4, 90109.65), we have convincing evidence suggesting that the mean salary is significantly different from the average salary in the US in 2017 as the prior was centered around 58,859 with a SD of 3. The credible interval suggests that our data strongly outweighs the prior belief.
+
+# Question 5
+
+Perform a Frequentist analysis to test whether the mean salary differs significantly between the police and the fire department. Again, as a reminder, since this is not a randomized experiment, the difference that we observe is a simple description, and not a causal effect. Please use emmeans to construct a table that includes the mean salary of the police department, the fire department, and the mean difference between the two, along with inferential statistics (at a minimum the test statistic, and the p-value). Then conduct a Bayesian hypothesis test on the mean salary difference. The prior for the null should be a point-mass prior on 0, and the alternative a Cauchy distribution centered on 0 with scale of .707. You can either use the BayesFactor package or bridgesampling in brms. Interpret your results and present them in tabular format. Expected length is about 1-2 sentences per analysis.
+
+```{r, results="hide"}
+lm_dept <- lm(Employee.Annual.Salary ~ Department, data = df)
+
+lm_dept <- emmeans(lm_dept, specs = "Department", contr = "pairwise")
+
+summary(lm_dept, infer = TRUE)$emmeans |>
+  tidy() |> 
+  mutate(
+    p.value = pvalue(p.value)) |> 
+  kable(digits = c(1, 2, 3, 0, 2, 2, 2, 3),
+        col.names = c("Term", "Estimate", "SE", "df","Lower 95% CI",
+                      "Upper 95% CI", "t", "p"))
+
+summary(lm_dept, infer = TRUE)$contrasts |>
+  tibble() |> 
+  mutate(
+    p.value = pvalue(p.value)) |> 
+  kable(digits = c(1, 2, 3, 0, 2, 2, 2, 3),
+        col.names = c("Term", "Estimate", "SE", "df","Lower 95% CI",
+                      "Upper 95% CI", "t", "p"))
+
+meanstable <- summary(lm_dept, infer = TRUE)$emmeans |>
+  tidy() |> 
+  mutate(
+    p.value = pvalue(p.value))
+
+difftable <- summary(lm_dept, infer = TRUE)$contrasts |>
+  tibble() |> 
+  mutate(
+    p.value = pvalue(p.value))
+
+colnames(difftable) <- colnames(meanstable)
+```
+
+```{r}
+bind_rows(meanstable, difftable) |> 
+  kable(caption = "Frequentist Analysis Summary Statistics",
+        digits = c(1, 2, 3, 0, 2, 2, 2, 3),
+        col.names = c("Term", "Estimate", "SE", "df","Lower 95% CI",
+                      "Upper 95% CI", "t", "p"))
+```
+
+Based on the results from the Frequentist analysis, since the p \< 0.001, we have convincing evidence to reject the null hypothesis. The results suggest that the mean salary of the fire department significantly differs from the mean salary of the police department.
+
+```{r}
+set.seed(5750)
+blm_dept <- ttestBF(formula = Employee.Annual.Salary ~ Department, data = df, 
+                    rscale = 0.707)
+
+extractBF(blm_dept, onlybf = TRUE) |> 
+  kable(caption ="BF", digits = 2, col.names = "BF")
+```
+
+Based on the results from the Bayesian analysis, since the BF is 3.67x10^18^, this means that there is overwhelming evidence supporting the alternative hypothesis. We have convincing evidence suggesting that the mean salary of the fire department significantly differs from the mean salary of the police department.
+
+# Question 6
+
+Redo the previous analysis, but now focus on estimation, not hypothesis testing. Compute both a 95% confidence interval, and a 95% credible interval. For the Bayesian model use a prior on the intercept that is normally distributed, centered on 58,829, with a standard deviation of 3, and a prior on the mean difference that is centered on 0, with a standard deviation of 3. Use autoscale = TRUE if using rstanarm or adjust accordingly in brms. For both analyses, report the model estimated group means, and the model estimated group mean difference, along with their confidence / credible limits in a table. Interpret your results and present them in tabular format. Expected length is about 1-2 sentences per analysis.
+
+```{r}
+bind_rows(meanstable, difftable) |> 
+  kable(caption = "Frequentist Analysis 95% Confidence Interval",
+        digits = c(1, 2, 3, 0, 2, 2, 2, 3),
+        col.names = c("Term", "Estimate", "SE", "df","Lower 95% CI",
+                      "Upper 95% CI", "t", "p"))
+```
+
+Based on the 95% confidence interval of (6565.72, 9892.82), we have convincing evidence suggesting that the mean salary of the fire department significantly differs from the mean salary of the police department as the interval does not contain difference in means = 0.
+
+```{r cache=TRUE, results="hide", message=FALSE, warning=FALSE}
+set.seed(5750)
+blm_dept2 <- stan_glm(Employee.Annual.Salary ~ Department, data = df,
+                      family = gaussian(),
+                      prior_intercept = normal(58829, 3, autoscale = TRUE),
+                      prior = normal(0, 3, autoscale = TRUE))
+```
+
+```{r}
+blm_dept2 <- emmeans(blm_dept2, specs = "Department", contr = "pairwise")
+
+meanstable_blm <- summary(blm_dept2)$emmeans |>
+  tidy()
+
+difftable_blm <- summary(blm_dept2)$contrasts |>
+  tibble()
+
+colnames(difftable_blm) <- colnames(meanstable_blm)
+
+bind_rows(meanstable_blm, difftable_blm) |> 
+  kable(caption = "Bayesian Analysis 95% Credible Interval",
+        digits = c(1, 2, 2, 2),
+        col.names = c("Term", "Estimate","Lower 95% HDI",
+                      "Upper 95% HDI"))
+```
+
+Based on the 95% credible interval of (6563.15, 9908.73), we have convincing evidence suggesting that the mean salary of the fire department significantly differs from the mean salary of the police department as the interval does not contain difference in means = 0. Since the prior on the mean difference is centered on 0 with a SD of 3, the credible interval suggests that our data strongly outweighs the prior belief.
+
+# Question 7
+
+Perform a frequentist equivalence test on the difference in salaries between the fire department and the police department. For the region of practical equivalence choose a yearly salary that does not differ by more than \$2,000. Use emmeans and simply report the p-value of the equivalence test and provide a 1 sentence summary. Use brms and bridgesampling to compute a Bayes Factor. The prior of the null model (that posits equivalence) should be a uniform prior on the mean difference coeﬀicient that ranges from -2000 to 2000 on a raw scale. The alternative should be a prior that is identical to the ones used before. The prior on the intercept should be the same in both models and be identical to the prior we used previously. Report your results in tabular format and interpret them briefly. Expected length is 1-2 sentences per analysis.
+
+```{r}
+lm_dept <- lm(Employee.Annual.Salary ~ Department, data = df)
+
+lm_dept <- emmeans(lm_dept, specs = "Department", contr = "pairwise")
+
+summary(lm_dept, infer = TRUE, level = 0.95, delta = 2000, 
+        side = "equivalence")$contrast |>
+  tibble() |>
+  mutate(
+    p.value = pvalue(p.value)) |> 
+  select(contrast, p.value) |>
+  kable(caption = "Frequentist Equivalence Test Results",
+        digits = c(1, 3),
+        col.names = c("Term", "p"))
+```
+
+Based on the results from the Frequentist analysis, since the p \> 0.999, we fail to reject the null hypothesis of non-equivalence, meaning the data does not support the conclusion that the mean salary of the fire and police departments are equivalent. Instead, it suggests that the observed difference is too large to be considered practically insignificant within the equivalence bounds.
+
+```{r cache=TRUE, results="hide", message=FALSE, warning=FALSE}
+set.seed(5750)
+blm_dept3 <- stan_glm(Employee.Annual.Salary ~ Department, data = df,
+                      family = gaussian(),
+                      prior_intercept = normal(58829, 3, autoscale = TRUE),
+                      prior = normal(0, 3, autoscale = TRUE))
+
+prior_summary(blm_dept3)
+```
+
+```{r cache=TRUE, results="hide", message=FALSE, warning=FALSE}
+prior_equiv <- prior(uniform(-2000, 2000), lb = -2000, ub = 2000, class = "b")
+prior_int <- prior(normal(58829, 52160), class = "Intercept")
+prior_alt <- prior(normal(0, 116396), class = "b")
+
+set.seed(5750)
+blm_null <- brm(Employee.Annual.Salary ~ Department, data = df,
+                family = gaussian(),
+                prior = c(prior_int, prior_equiv),
+                save_pars = save_pars(all = TRUE))
+
+set.seed(5750)
+blm_alt <- brm(Employee.Annual.Salary ~ Department, data = df,
+                family = gaussian(),
+                prior = c(prior_int, prior_alt),
+                save_pars = save_pars(all = TRUE))
+
+bf_dept <- bayes_factor(blm_alt, blm_null)
+```
+
+```{r}
+bf_dept
+```
+
+Based on the results from the Bayesian analysis, since the BF is approximately 9x10^10^, this means that there is overwhelming evidence supporting the alternative hypothesis. In this case, the data is strongly against the null hypothesis which posits equivalence, so the mean salary of the fire and police departments are not equivalent.
+
+# Question 8
+
+This discrepancy occurs because Bayesian hypothesis testing and Frequentist significance testing interpret evidence differently. In Frequentist testing, a very small p-value (p \< 0.001) suggests that the observed data is highly unlikely under the null hypothesis, leading to its rejection. However, this does not directly quantify the strength of evidence for or against the null hypothesis; it simply measures the likelihood of obtaining data as extreme as what was observed if the null hypothesis were true.
+
+In contrast, Bayesian hypothesis testing via Bayes Factors compares the relative evidence for two competing hypotheses, incorporating prior beliefs. If the Bayes Factor shows weak support for the null, it could be due to the influence of a prior that does not strongly favor the alternative hypothesis, or the data does not provide compelling evidence for the alternative, even though the p-value suggests a significant result. The difference in results reflects the fact that Bayes Factors account for both prior information and the likelihood of the data, while p-values focus solely on the data under the null hypothesis.
+
+# Question 9
+
+The Bayesian credible interval may be narrower than the Frequentist confidence interval due to the influence of the prior distribution in the Bayesian analysis. In Bayesian inference, the credible interval reflects both the data and the prior beliefs about the parameter. If the prior is informative, such as concentrated around certain values, it can add additional information, reducing the uncertainty and leading to a narrower credible interval.
+
+In contrast, the Frequentist confidence interval is based solely on the observed data, without incorporating prior information. As a result, it may be wider, especially if the data is limited or noisy. Essentially, the Bayesian credible interval combines prior information with the data, while the Frequentist confidence interval is driven entirely by the variability in the data. This difference explains why the credible interval might be more narrow.
+
+# Question 10
+
+Null Hypothesis Significance Testing (NHST) is easy to understand and widely used, offering a clear decision framework for hypothesis testing based on p-values. However, it is only focusing on whether an effect is statistically significant but does not provide information about the size of the effect and can lead to overemphasis on significance without considering practical relevance.
+
+Confidence Intervals give a range of plausible values for the parameter, offering more insight into the uncertainty and size of an effect. A disadvantage is that they rely solely on the sample data and may be wide or imprecise, especially with small sample sizes or noisy data.
+
+Bayes Factors allow direct comparison of evidence for both the null and alternative hypotheses, incorporating prior knowledge and offering more flexibility in interpretation. However, computing Bayes Factors can be computationally intensive, especially for complex models, and may not always yield intuitive results for non-experts.
+
+Credible Intervals provide an intuitive probabilistic interpretation, directly indicating the probability that the parameter lies within the interval. A downside is that they may be overly narrow if the data strongly agrees with the prior, potentially giving a false sense of certainty about the parameter estimate.

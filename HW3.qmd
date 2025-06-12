@@ -1,0 +1,305 @@
+---
+title: "HW 3"
+author: "Claire Chen"
+date: today
+format: pdf
+editor: visual
+---
+
+```{r message=FALSE, warning=FALSE}
+library(readr)
+library(dplyr)
+library(tidyr)
+library(knitr)
+library(report)
+library(broom)
+library(ggplot2)
+
+df <- read_csv(
+  "https://raw.githubusercontent.com/felixthoemmes/hwdatasets/master/potential1.csv")
+```
+
+# Question 1
+
+Compute individual causal effects for each individual in the dataset, and then answer the following questions below. For each question provide some numerical evidence that is based on some computation of the potential outcomes.
+
+```{r}
+df <- df |>
+  mutate(causal_effect = y1 - y0)
+```
+
+Create a table that shows the number of individuals for whom the treatment is beneficial, detrimental, or neutral. For each of these three subgroups, compute the average treatment effect, and display all of this information in a single table.
+
+```{r}
+causal_effect <- tibble(
+  Subgroup = c("Beneficial", "Detrimentral", "Neutral"),
+  Number = c(sum(df$causal_effect > 0), 
+             sum(df$causal_effect < 0), 
+             sum(df$causal_effect == 0)),
+  Average_Treatment_Effect = c(mean(df$causal_effect[df$causal_effect > 0]), 
+                               mean(df$causal_effect[df$causal_effect < 0]), 
+                               mean(df$causal_effect[df$causal_effect == 0]))
+  )
+  
+causal_effect |>
+  kable(digit = 2,
+        caption = "Average Treatment Effect and Number of Individuals in
+        Subgroups")
+```
+
+What is the maximum beneficial treatment effect for an individual in the dataset, and what is the maximum detrimental treatment effect for an individual in the dataset? Report both of these individual effects.
+
+```{r}
+max_causal_effect <- tibble(
+  Subgroup = c("Beneficial", "Detrimental"),
+  Maximum_Treatment_Effect = c(max(df$causal_effect),
+                               min(df$causal_effect))
+  )
+
+max_causal_effect |>
+  kable(caption = "Maximum Beneficial and Detrimental Treatment Effect")
+```
+
+# Question 2
+
+Aggregate the individual effects to compute the average treatment effect (ATE), the average treatment effect for the treated (ATT), and the average treatment effect for the untreated (ATU). Then, compute the treatment effect of the grouping variable based on the observed outcome. This estimate is sometimes referred to as the prima-facie (“at first sight”) treatment effect. Finally, compute a “counter” treatment effect, in which you flip the assignment of each individual and estimate a treatment effect that would have been observed if everyone would have been assigned to the exact opposite treatment of the one that was in fact observed. Display all treatment effects in a single table and then provide an interpretation for each. The interpretation can be around 1-2 sentences long for each effect.
+
+```{r}
+group0 <- df |>
+  filter(g == 0)
+group1 <- df |>
+  filter(g == 1)
+
+ATE <- mean(df$y1) - mean(df$y0)
+ATT <- mean(group1$y1) - mean(group1$y0)
+ATU <- mean(group0$y1) - mean(group0$y0)
+PF <- mean(group1$y1) - mean(group0$y0)
+counter_effect <- mean(group1$y0) - mean(group0$y1)
+
+treatmeant_effects <- tibble(
+  Effect = c("ATE", "ATT", "ATU", "PF", "Counter Effect"),
+  Value = c(ATE, ATT, ATU, PF, counter_effect))
+
+treatmeant_effects |>
+  kable(caption = "Treatment Effects and Interpretations")
+```
+
+ATE is the difference between the average potential outcomes of all individuals if they were treated versus the average potential outcomes if none of them were not treated. In this context, ATE means on average, if the treatment were applied to the all individuals in the sample, the treatment increases the outcome by 2 units for the entire sample.
+
+ATT is the difference between the average potential outcomes of those who were treated verses the average potential outcomes of the same people if they were not treated. In this context, ATT means on average, the treatment increases the outcome by 2.08 units for those who received the treatment.
+
+For those who were not treated, ATU is the differece between the average potential outcomes had they been treated versus the potential outcomes of them not being treated. In this context, ATU means on average, if the treatment were applied to those who did not received the treatment, the treatment would have increased the outcome by 1.92 units for them.
+
+PF effect is the observed outcome between those who were treated versus those who were not treated without controlling for confounders. In this context, PF means at first glance, without controlling for other variables or biases, the treatment increases the outcome by 2.02 units for those who received the treatment compared to those who did not received the treatment.
+
+Counter effect means assuming all treatment assignments were flipped, the treatment decreases the outcome by 1.98 units for those who received the treatment compared to those who did not received the treatment at first glance, without controlling for other variables or biases.
+
+# Question 3
+
+A plot in which the x-axis is an index for each individual, and the y-axis the value on the potential outcomes. The index of individuals should be sorted so that the potential outcomes under control are ascending from the left to the right on the x-axis. The different potential outcomes should be plotted with different symbols (a filled and a hollow point are standard choices).
+
+```{r}
+df1 <- df |>
+  arrange(y0) |>
+  mutate(index = seq_along(y0)) |>
+  select(index, y0, y1) |>
+  pivot_longer(cols = c(y0, y1),
+               names_to = "Group",
+               values_to = "value") |>
+  mutate(Group = case_when(
+    Group == "y0" ~ "Control",
+    Group == "y1" ~ "Treatment"))
+  
+
+ggplot(df1, aes(x = index, y = value, color = Group, shape = Group)) +
+  geom_point(size = 1) +
+  labs(x = "Index of Individuals",
+       y = "Potential Outcomes",
+       title = "Potential Outcomes of All Individuals") +
+  scale_color_manual(values = c("Control" = "blue", "Treatment" = "red")) +
+  scale_shape_manual(values = c("Control" = 16, "Treatment" = 1)) +
+  theme(legend.position = "bottom")
+```
+
+A plot of individual treatment effects, sorted by the magnitude of the effect.
+
+```{r}
+sorted_causal_effect <- sort(df$causal_effect)
+index <- seq_along(sorted_causal_effect)
+df2 <- tibble(index, sorted_causal_effect)
+
+ggplot(df2, aes(x = index, y = sorted_causal_effect)) +
+  geom_point(size = 1) +
+  labs(x = "Index of Individuals",
+       y = "Individual Treatment Effect",
+       title = "Individual Treatment Effects Sorted by Effect Magnitude")
+```
+
+A plot which shows two overlaid kernel density estimates, one kernel density estimate for the potential outcomes under control, and one for the potential outcomes under treatment. Overlay the mean of both sets of potential outcomes on top of the kernel density estimates.
+
+```{r}
+mean_potential_outcome <- df1 |>
+  group_by(Group) |>
+  summarize(mean_potential_outcome = mean(value))
+
+ggplot(df1, aes(x = value, fill = Group, color = Group)) +
+  geom_density(alpha = 0.3, adjust = 1.5) +
+  geom_vline(data = mean_potential_outcome, 
+             aes(xintercept = mean_potential_outcome, color = Group), 
+             linewidth = 0.5) +
+  labs(title = "Kernel Density Estimate of Potential Outcomes by Treatment 
+       Groups with Mean Potential Outcomes Lines",
+       x = "Potential Outcome",
+       y = "Density") +
+  theme(legend.position = "bottom")
+```
+
+# Question 4
+
+Now download a second dataset.
+
+```{r message=FALSE, warning=FALSE}
+new_df <- read_csv(
+  "https://raw.githubusercontent.com/felixthoemmes/hwdatasets/master/potential2.csv")
+```
+
+For this dataset, compute the ATE, ATT, ATU, and prima-facie (PF) treatment effect, and report all of them in a single table.
+
+```{r}
+new_group0 <- new_df |>
+  filter(g == 0)
+new_group1 <- new_df |>
+  filter(g == 1)
+
+new_ATE <- mean(new_df$y1) - mean(new_df$y0)
+new_ATT <- mean(new_group1$y1) - mean(new_group1$y0)
+new_ATU <- mean(new_group0$y1) - mean(new_group0$y0)
+new_PF <- mean(new_group1$y1) - mean(new_group0$y0)
+
+new_treatmeant_effects <- tibble(
+  Effect = c("ATE", "ATT", "ATU", "PF"),
+  Value = c(new_ATE, new_ATT, new_ATU, new_PF))
+
+new_treatmeant_effects |>
+  kable(digits = 2,
+    caption = "Treatment Effects of Second Dataset")
+```
+
+# Question 5
+
+Compute the decomposition of the PF into the ATE, selection bias, and the heterogeneous treatment effect bias and report them in a well-formatted table. Describe each of the four components for this particular dataset. Expected length for each is 1-2 sentences.
+
+```{r}
+SB <- mean(new_group1$y0) - mean(new_group0$y0)
+HTE <- (new_ATT - new_ATU) * (1 - (sum(new_df$g == 1) / length(new_df$g)))
+decomposed_PF <- new_ATE + SB + HTE
+
+PF_decomposition <- tibble(
+  Effect = c("ATE", "Selection Bias", "Heterogeneous Treatment Effect", 
+             "PF"),
+  Value = c(new_ATE, SB, HTE, decomposed_PF))
+
+PF_decomposition |>
+  kable(digits = 2,
+        caption = "PF Decomposition into ATE, Selection Bias, and HTE")
+```
+
+ATE is the difference between the average potential outcomes of all individuals if they were treated versus the average potential outcomes if none of them were not treated.
+
+Selection bias refers to when the subjects of an experiment are not representative of the population due to how they were selected or assigned to different treatment groups. It means that the untreated potential outcomes differ among those who are treated versus those who are not treated.
+
+HTE is a biasing variable when those who received the treatment react to the treatment differently than those who did not receive the treatment had they been given the treatment. It means that the treated potential outcomes differ among those who are treated versus those who are not treated had they been treated.
+
+PF effect is the observed outcome between those who were treated versus those who were not treated without controlling for confounding variables or biases.
+
+# Question 6
+
+There is an additional variable in the dataset, called “c”. This variable has an effect on individuals selecting into the treatment or the control condition, and it also has an effect on whether someone benefits from the treatment or not. Split the dataset by variable “c” and recompute the ATE and the PF. Then take a weighted average of the two estimates that you computed. Report the ATE and PF from Question 5, the ATE and PF for the subgroups, and the weighted average PF and ATE in a single table. Then discuss how the ATE and the PF differ for the different computations (i.e., in the total sample, in the subsamples, in the weighted analysis). Expected length is about 1-2 paragraphs.
+
+```{r}
+new_c0 <- new_df |>
+  filter(c1 == 0)
+new_c1 <- new_df |>
+  filter(c1 == 1)
+
+ATE_c0 <- mean(new_c0$y1) - mean(new_c0$y0)
+ATE_c1 <- mean(new_c1$y1) - mean(new_c1$y0)
+ATE_weighted <- ((length(new_c0$c1) / length(new_df$c1)) * ATE_c0) + 
+  ((length(new_c1$c1) / length(new_df$c1)) * ATE_c1)
+
+new_c0group0 <- new_c0 |>
+  filter(g == 0)
+new_c0group1 <- new_c0 |>
+  filter(g == 1)
+new_c1group0 <- new_c1 |>
+  filter(g == 0)
+new_c1group1 <- new_c1 |>
+  filter(g == 1)
+
+PF_c0 <- mean(new_c0group1$y1) - mean(new_c0group0$y0)
+PF_c1 <- mean(new_c1group1$y1) - mean(new_c1group0$y0)
+PF_weighted <- ((length(new_c0$c1) / length(new_df$c1)) * PF_c0) + 
+  ((length(new_c1$c1) / length(new_df$c1)) * PF_c1)
+
+ATE_PF_table <- tibble(
+  Effect = c("ATE", "PF"),
+  Overall = c(new_ATE, new_PF),
+  c0 = c(ATE_c0, PF_c0),
+  c1 = c(ATE_c1, PF_c1),
+  Weighted = c(ATE_weighted, PF_weighted))
+
+ATE_PF_table |>
+  kable(digits = 2,
+        caption = "Overall, Subgroup, and Weighted ATE and PF")
+```
+
+Based on the different groupings of individuals by variable "c" in this data set, the ATE and PF vary a lot depending on which grouping we are using. Overall, the weighted ATE and PF are fairly similar to the overall ATE and PF results. This is possible because weighted ATE and PF take proportions of individuals in each of the binary subgroups into consideration, which generated results that are similar to the overall results. However, when looking at the each subgroup's ATE and PF, we can notice that c0 and c1 have some predisposed differences that affected their potential outcomes, generating ATE and PF results that are directional. For subgroup c0, the average difference in treated potential outcomes versus untreated potential outcomes for all individuals in the subgroup is positive, which is different from the overall, weighted, and subgroup c1 ATE results. On the same note, the average difference between treated observed outcomes and untreated observed outcomes in subgroup c0 is also positive, differing from overall, weighted, and subgroup c1 PF results. These results appear to suggest that subgroup c0 have a tendency of reacting to the treatment differently than those in subgroup c1, but this difference is ultimately averaged out by subgroup c1 such that the overall and weighted results are still more similar to c1 results.
+
+# Question 7
+
+Generate a plot of potential outcomes similar to the first plot from Question 3, but split the plot by values of the variable “c”. You can do this either via a facet wrap, special color-coding or any other way that you believe results in an informative display.
+
+```{r}
+new_df1 <- new_df |>
+  arrange(y0) |>
+  mutate(index = seq_along(y0)) |>
+  select(index, y0, y1, c1) |>
+  pivot_longer(cols = c(y0, y1),
+               names_to = "Group",
+               values_to = "value") |>
+  mutate(Group = case_when(
+    Group == "y0" ~ "Control",
+    Group == "y1" ~ "Treatment")) |>
+  mutate(c1 = factor(c1)) |>
+  rename(c = c1)
+  
+ggplot(new_df1, aes(x = index, y = value, color = Group, shape = Group)) +
+  geom_point(size = 1) +
+  labs(x = "Index of Individuals",
+       y = "Potential Outcomes",
+       title = "Potential Outcomes of All Individuals by Variable 'c'") +
+  facet_wrap(~ c) +
+   scale_color_manual(values = c("Control" = "blue", "Treatment" = "red")) +
+  scale_shape_manual(values = c("Control" = 16, "Treatment" = 1)) +
+  theme(legend.position = "bottom")
+```
+
+# Question 8
+
+Heterogeneous treatment effect (HTE) is a biasing effect that occurs when different subgroups in a population react to the treatment differently, but this variation is not properly accounted for. It means that the treated potential outcomes differ among those who are treated versus those who are not treated had they been treated. If a certain subgroup is more likely to receive the treatment due to some biased selection method, their observed outcomes can differ systematically from other untreated subgroups had they been treated.
+
+Suppose an experiment is studying the effects of a certain drug that is more effective for those who are biologically female. If females are more likely to be in the treatment group of the experiment, the observed difference in outcomes between the treatment and control groups will overestimate the overall effect of the drug. HTE is biasing the the effectiveness of the drug by inflating the effect because the drug is more effective for a certain subset of the overall population that is disproportionately represented in the treated group.
+
+In a randomized experiment, though, HTE does not pose a threat to the estimation of the ATE because randomized assignments are assumed to be independent of each individual subject's potential outcomes. Therefore, even if HTE exists in an experiment, randomization ensures that there is an equal distribution of each subgroup across the treatment and control groups such that the estimated ATE is reflective of the true average effect across the population.
+
+# Question 9
+
+Firstly, the independence assumption could be violated in a randomized experiment due to attrition, which refers to the dropping out of participants throughout an experiment, especially in a non-random, systematic fashion. For example, in a drug effectiveness experiment, those who are in the treated group may experience much greater negative side effects than those in the placebo group. Due to the negative side effects, those who are in the treated group are more likely to drop out than those in the placebo, or control, group. Thus, the participants who remained until the end of the experiment may not be representative of the originally randomized groups.
+
+Secondly, participants' non-compliance is another reason to the violation of independence assumption in a randomized experiment. Using the same drug effectiveness experiment as an example, participants in either treatment or placebo group may not honor their original assignment. Those who are in the treated group may not take the treatment, or those who are in the placebo group may gain access to the treatment. At the end of the experiment, the independence assumption no longer stands because those who actually took the treatment were not selected independent of individual characteristics.
+
+Lastly, treatment diffusion could also contribute to the violation of the independence assumption in a randomized experiment. This happens when those who are in the control group are indirectly affected by the treatment given to those in the treated group. In the drug effectiveness experiment, if there are no strict boundaries between the placebo and treatment groups, those in the placebo group may benefit from the improve health conditions of those who are treated had the two groups are in the same social circle. Thus, the placebo group would not serve as an unbiased counterfactual to the treatment group.
+
+# Question 10
+
+Identification is the theoretical determination, under certain assumptions like randomization, of whether a causal effect can be inferred from experiments. For example, in a randomized experiment, the process of randomization ensures the identification of the causal effect of the variable that is randomized. The only alternative explanation to significant treatment effect in a randomized experiment would be chance. Estimation of causal effects, on the other hand, is the statistical calculation of causal effect based on the data collected once a causal effect is identified. Estimation provides us with the magnitude of the causal effect based on the quality and quantity of the data available.

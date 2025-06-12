@@ -1,0 +1,313 @@
+---
+title: "HW 4"
+author: "Claire Chen"
+date: today
+format: pdf
+editor: visual
+---
+
+```{r, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(broom)
+library(report)
+library(knitr)
+library(infer)
+```
+
+# Question 1
+
+Simulate repeated draws of n = 40, from a population in which the mean is 5, and the standard deviation is 2.5, and a normal distribution is assumed. Again, make sure to use the random seed number 5750. Then plot the sampling distribution of the mean using a histogram that you obtain from 10,000 repeated draws. Very briefly discuss the shape of the distribution. Expected length is 1-2 sentences.
+
+```{r}
+tsampler <- function(n, a, s, mu) {
+    tibble(x = rnorm(n = n, mean = a, sd = s)) |>  
+    t_test(response = x, mu = mu) |>          
+    select(p_value, statistic, estimate)}
+
+set.seed(5750)
+results <- map(1:10000, ~ tsampler(n = 40, a = 5, s = 2.5, mu = 5))
+combined_results <- bind_rows(results, .id = "replication")
+
+ggplot(combined_results, aes(x = estimate)) +
+  geom_histogram(
+    binwidth = 0.1, fill = "pink", color = "black",boundary = 0) +
+  labs(title = "Sampling Distribution of the Mean (n = 40)",
+       x = "Sample Mean",
+       y = "Frequency")
+```
+
+The shape of the distribution is bell-shaped like a normal distribution's shape.
+
+# Question 2
+
+Examine the empirical sampling distribution that you created in the previous question and answer the question at what values of this distribution 2.5% of the the tail on each side is being cut off. That means that you should find and report the value of the observed mean that is at the 2.5% and 97.5% percentile of the distribution.
+
+```{r}
+tails <- tibble(
+  Tail = c("2.5%", "97.5%"),
+  Value = c(paste(round(quantile(combined_results$estimate, 0.025), 2), "%"), 
+            paste(round(quantile(combined_results$estimate, 0.975), 2), "%")))
+
+tails |>
+  kable(caption = "2.5% Tails of Sampling Distribution")
+```
+
+# Question 3
+
+For each of the 10,000 draws of the distribution that you drew in the previous question, conduct a significance test to check whether the mean is different from 5. That means your null hypothesis is 𝐻0 = 5 and your alternative hypothesis is 𝐻1 ≠ 5. Report the percentage of significant p-values using a Type I error rate of 5%. Using the exact same draws of the distribution, construct a histogram of the p-values, and in 1 or 2 sentences, describe the shape of this histogram. Then repeat this exact process, but with different samples sizes of 5, 500, and 5,000. For each of these sample sizes, compute the percentage of significant results. From this, form a statement about the relationship of the sample size and the Type I error rates in situations in which the null hypothesis is true.
+
+```{r}
+sig_perc <- paste(
+  round((mean(combined_results$p_value < 0.05) * 100), 2), "%")
+
+ggplot(combined_results, aes(x = p_value)) +
+  geom_histogram(
+    binwidth = 0.01, fill = "pink", color = "black",boundary = 0) +
+  labs(title = "Histogram of p-values (n = 40)",
+       x = "p-value",
+       y = "Frequency")
+```
+
+The shape of the histogram has an approximately uniform distribution under the null hypothesis.
+
+```{r}
+set.seed(5750)
+results5 <- map(1:10000, ~ tsampler(n = 5, a = 5, s = 2.5, mu = 5))
+combined_results5 <- bind_rows(results5, .id = "replication")
+
+sig_perc5 <- paste(
+  round((mean(combined_results5$p_value < 0.05) * 100), 2), "%")
+
+ggplot(combined_results5, aes(x = p_value)) +
+  geom_histogram(
+    binwidth = 0.01, fill = "tan", color = "black",boundary = 0) +
+  labs(title = "Histogram of p-values (n = 5)",
+       x = "p-value",
+       y = "Frequency")
+```
+
+The shape of the histogram has an approximately uniform distribution under the null hypothesis.
+
+```{r}
+set.seed(5750)
+results500 <- map(1:10000, ~ tsampler(n = 500, a = 5, s = 2.5, mu = 5))
+combined_results500 <- bind_rows(results500, .id = "replication")
+
+sig_perc500 <- paste(
+  round((mean(combined_results500$p_value < 0.05) * 100), 2), "%")
+
+ggplot(combined_results500, aes(x = p_value)) +
+  geom_histogram(
+    binwidth = 0.01, fill = "thistle", color = "black",boundary = 0) +
+  labs(title = "Histogram of p-values (n = 500)",
+       x = "p-value",
+       y = "Frequency")
+```
+
+The shape of the histogram has an approximately uniform distribution under the null hypothesis.
+
+```{r}
+set.seed(5750)
+results5000 <- map(1:10000, ~ tsampler(n = 5000, a = 5, s = 2.5, mu = 5))
+combined_results5000 <- bind_rows(results5000, .id = "replication")
+
+sig_perc5000 <- paste(
+  round((mean(combined_results5000$p_value < 0.05) * 100), 2), "%")
+
+ggplot(combined_results5000, aes(x = p_value)) +
+  geom_histogram(
+    binwidth = 0.01, fill = "skyblue", color = "black",boundary = 0) +
+  labs(title = "Histogram of p-values (n = 5000)",
+       x = "p-value",
+       y = "Frequency")
+```
+
+The shape of the histogram has an approximately uniform distribution under the null hypothesis.
+
+```{r}
+sig_perc_table <- tibble(
+  Group = c("n = 40", "n = 5", "n = 500", "n = 5000"),
+  Percentage = c(sig_perc, sig_perc5, sig_perc500, sig_perc5000))
+
+sig_perc_table |>
+  kable(caption = "Percentages of Significant Results")
+```
+
+Under the assumption that the null hypothesis is true, smaller sample sizes tend to exhibit greater variability in p-values, leading to an increased likelihood of Type I errors. As sample size increases, the p-value distribution becomes more stable and approaches the significance level of 5%, which means that larger samples yield more reliable results in hypothesis testing.
+
+# Question 4
+
+Now conduct a significance test on each of the 10,000 draws to test whether the mean is different from 5.5, that means 𝐻0 = 5.5, and 𝐻1 ≠ 5.5. Again, report the percentage of significant p-values at the 5% Type I error rate, and then plot a histogram of all 10,000 observed p-values. Again, briefly describe the distribution of the p-values. Then repeat this exact process, but with different samples sizes of 5, 500, and 5,000. For each of these sample sizes, compute the percentage of significant results. From this, form a statement about the relationship of the sample size and the Type II error rates in situations in which the null hypothesis is false.
+
+```{r}
+set.seed(5750)
+results_5.5 <- map(1:10000, ~ tsampler(n = 40, a = 5, s = 2.5, mu = 5.5))
+combined_results_5.5 <- bind_rows(results_5.5, .id = "replication")
+
+sig_perc_5.5 <- paste(
+  round((mean(combined_results_5.5$p_value < 0.05) * 100), 2), "%")
+
+
+ggplot(combined_results_5.5, aes(x = p_value)) +
+  geom_histogram(
+    binwidth = 0.01, fill = "pink", color = "black",boundary = 0) +
+  labs(title = "Histogram of p-values (n = 40)",
+       x = "p-value",
+       y = "Frequency")
+```
+
+The shape of the histogram is skewed to the right with majority of the data points centered around x = 0 under the null hypothesis.
+
+```{r}
+set.seed(5750)
+results5_5.5 <- map(1:10000, ~ tsampler(n = 5, a = 5, s = 2.5, mu = 5.5))
+combined_results5_5.5 <- bind_rows(results5_5.5, .id = "replication")
+
+sig_perc5_5.5 <- paste(
+  round((mean(combined_results5_5.5$p_value < 0.05) * 100), 2), "%")
+
+ggplot(combined_results5_5.5, aes(x = p_value)) +
+  geom_histogram(
+    binwidth = 0.01, fill = "tan", color = "black",boundary = 0) +
+  labs(title = "Histogram of p-values (n = 5)",
+       x = "p-value",
+       y = "Frequency")
+```
+
+The shape of the histogram is approximately an uniform distribution with a slight skew to the right under the null hypothesis.
+
+```{r}
+set.seed(5750)
+results500_5.5 <- map(1:10000, ~ tsampler(n = 500, a = 5, s = 2.5, mu = 5.5))
+combined_results500_5.5 <- bind_rows(results500_5.5, .id = "replication")
+
+sig_perc500_5.5 <- paste(
+  round((mean(combined_results500_5.5$p_value < 0.05) * 100), 2), "%")
+
+ggplot(combined_results500_5.5, aes(x = p_value)) +
+  geom_histogram(
+    binwidth = 0.01, fill = "thistle", color = "black",boundary = 0) +
+  labs(title = "Histogram of p-values (n = 500)",
+       x = "p-value",
+       y = "Frequency") +
+  scale_x_continuous(limits = c(0, 1))
+```
+
+The shape of the histogram has approximately one sharp concentration centered around x = 0 under the null hypothesis.
+
+```{r}
+set.seed(5750)
+results5000_5.5 <- map(1:10000, 
+                       ~ tsampler(n = 5000, a = 5, s = 2.5, mu = 5.5))
+combined_results5000_5.5 <- bind_rows(results5000_5.5, .id = "replication")
+
+sig_perc5000_5.5 <- paste(
+  sprintf("%.2f", (mean(combined_results5000_5.5$p_value < 0.05) * 100)), "%")
+
+ggplot(combined_results5000_5.5, aes(x = p_value)) +
+  geom_histogram(
+    binwidth = 0.01, fill = "skyblue", color = "black",boundary = 0) +
+  labs(title = "Histogram of p-values (n = 5000)",
+       x = "p-value",
+       y = "Frequency") +
+  scale_x_continuous(limits = c(0, 1))
+```
+
+The shape of the histogram has approximately one sharp concentration centered around x = 0 under the null hypothesis.
+
+```{r}
+sig_perc_table_5.5 <- tibble(
+  Group = c("n = 40", "n = 5", "n = 500", "n = 5000"),
+  Percentage = c(
+    sig_perc_5.5, sig_perc5_5.5, sig_perc500_5.5, sig_perc5000_5.5))
+
+sig_perc_table_5.5 |>
+  kable(caption = "Percentages of Significant Results")
+```
+
+Under the assumption that the null hypothesis is true, as the sample size increases, the power of the test increases, reducing the likelihood of a Type II error. This is because larger samples provide a more precise estimate of the true mean, making it easier to detect deviations from the null hypothesis. Smaller sample sizes tend to have higher Type II error rates because the test lacks sufficient power to detect the difference from the null hypothesis effectively.
+
+# Question 5
+
+Consider the 10,000 repeated draws of size n = 40 that you took earlier, and tested against the hypothesis 𝐻0 = 5.5. For each draw, consider whether it yielded a significant result or not, and what the observed deviation from the null was. Keep in mind that under the null 𝐻0 = 5.5, and a sampling distribution that is centered around 5, the expected difference is .5. Construct overlaid kernel density estimates that shows the raw difference between the observed mean and the null on the x-axis, and density on the y-axis. The two overlaid kernel density estimates should be separated by significant and non-significant results. Comment on the shape of the kernel density estimates, and what they imply. Expected length is about 2-3 sentences.
+
+```{r}
+combined_results_5.5 <- combined_results_5.5 |>
+  mutate(Difference = estimate - 5.5) |>
+  mutate(Significance = ifelse(p_value < 0.05, 
+                               "Significant", "Not Significant"))
+
+ggplot(combined_results_5.5, aes(x = Difference, fill = Significance)) +
+  geom_density(alpha = 0.5, adjust = 1.5) + 
+  labs(title = "Kernel Density of Raw Differences from Null (H0 = 5.5)",
+       x = "Difference (Observed Mean - 5.5)", 
+       y = "Density") +
+  scale_fill_manual(values = c("Significant" = "pink", 
+                               "Not Significant" = "skyblue")) +
+  theme(legend.position = "bottom")
+```
+
+The kernel density estimate for significant results are slightly skewed to the left with most of the results centered around x = -1. The kernel density estimate for non-significant results are slightly skewed to the right with most of the results centered around x = -0.5. Since the sampling distribution is centered around 5, the true difference between observed mean and null hypothesis should be -0.5. This implies that significant results tend to overestimate the difference between observed mean and null, whereas the non-significant results in this case is closer to estimating the true difference. The overestimate of effect size tend to happen particularly in cases where the sample sizes are smaller due to greater variability.
+
+# Question 6
+
+Now conduct a slightly different simulation, in which you again draw from the same distribution, (𝑁 (𝜇 = 5, 𝜎 = 2.5)), testing a true null 𝐻0 = 5, with a sample size of 500. But this time, examine the p-value for this significance test at each single observation starting with n=2 to n=500. That means that you will obtain 499 p-values. This is similar to a procedure of collecting one person at a time, and then immediately conducting a significance test. Construct a lineplot that shows sample size on the x-axis, and p-value on the y-axis. Describe this plot, and what it implies. Expected length is about 2-3 sentences.
+
+```{r}
+isampler <- function(n, a, s, mu) {
+  sample_data <- tibble(x = rnorm(n = n, mean = a, sd = s))
+  map(2:n, ~ (
+    sample_data_subset <- head(sample_data, n = .x) |>  
+    t_test(response = x, mu = mu) |>                    
+    select(p_value, statistic, estimate)))}
+
+set.seed(5750)
+results_new <- isampler(500, 5, 2.5, 5)
+p_seq <- bind_rows(results_new) |>
+  mutate(sample_size = 2:500)
+
+ggplot(p_seq, aes(x = sample_size, y = p_value)) +
+  geom_line(color = "black") + 
+  geom_hline(yintercept = 0.05, color = "pink") +
+  labs(title = "P-values as Sample Size Increases",
+       x = "Sample Size",
+       y = "P-value")
+```
+
+As the sample size increases, the p-value fluctuates and exhibits an erratic zigzag shape that never converges to a single value. This means that under the true null hypothesis, there is not a convergence pattern for the p-value when the sampling distribution does not differ from the null.
+
+# Question 7
+
+Repeat the exact same simulation as above, but this time use a false null hypothesis 𝐻0 = 5.5. Construct the same plot, and describe it and what it implies. Expected length is about 2-3 sentences.
+
+```{r}
+set.seed(5750)
+results_new_5.5 <- isampler(500, 5, 2.5, 5.5)
+p_seq_5.5 <- bind_rows(results_new_5.5) |>
+  mutate(sample_size = 2:500)
+
+ggplot(p_seq_5.5, aes(x = sample_size, y = p_value)) +
+  geom_line(color = "black") + 
+  geom_hline(yintercept = 0.05, color = "pink") +
+  labs(title = "P-values as Sample Size Increases",
+       x = "Sample Size",
+       y = "P-value")
+```
+
+In this case, because the null hypothesis is false, we observe that the p-value decreases more quickly and consistently as the sample size increases. Eventually, the p-value converges toward y = 0, implying that there is a convergence pattern when the sampling distribution differs from the null.
+
+# Question 8
+
+Researcher A and Researcher B should not obtain the same p-value, even if they end up with the exact same final data. This is due to the fact that Frequentist hypothesis testing relies on pre-set experimental procedures, including setting the sample size in advance. Researcher A follows this principle by deciding upfront to collect 100 observations and then conduct a significance test. The p-value resulting from this process is based on a fixed sample size, which aligns with the assumptions of Frequentist statistics.
+
+On the other hand, Researcher B is using sequential sampling in which they examine the data midway and decide to collect more observations after the initial results are not significant. This practice violates the Frequentist assumption that the sample size must be determined before data collection. By examining the data and adjusting the sample size halfway through the experiment, Researcher B increases the likelihood of making a Type I error. This is because the significance test no longer reflects the distribution of the test statistic under the null hypothesis with a fixed sample size; the p-value calculated after sequential sampling would not have the same interpretation as if the stopping rule had been pre-determined. Thus, even though two researchers have identical final data, the p-values differ because Researcher B’s procedure introduces bias by violating the Frequentist assumption of a fixed, pre-determined sampling plan.
+
+# Question 9
+
+Researcher A observed a mean further away from the null hypothesis despite both researchers obtained the same p-value of 0.02. This is because p-value reflects the probability of observing a test statistic as extreme as, or more extreme than, the one obtained if the null hypothesis were true. For smaller sample sizes in Researcher A's case, there is greater variability in the sample means due to higher standard error. Therefore, to achieve a p-value of 0.02 with a smaller sample, the observed mean must be further from the null hypothesis to compensate for the higher uncertainty introduced by the higher variability. In contrast, Researcher B’s larger sample size leads to a lower standard error, meaning a mean that is relatively closer to the null can result in a low p-value due to less uncertainty introduced by the smaller variability, afforded by the larger sample.
+
+# Question 10
+
+In earlier simulations, the distribution of p-values under a true null hypothesis takes on a zigzag shape that does not converge toward 0, but there is no apparent pattern to the distribution such that the p-values can fall anywhere between 0 and 1. This can seem surprising because many people would expect p-values to cluster near non-significant values assuming a true null hypothesis. However, this distribution occurs because, under the true null hypothesis, there is no real effect, and any variation in test statistics is purely due to random chance. Since randomness governs the test statistic, all p-values between 0 and 1 are equally likely. Thus, p-values do not bunch up closer to non-significant values, but instead are spread out randomly.
+
+The p-value necessarily must be distributed in this way under a true null in this zigzag-shaped distribution of p-values because no particular outcome is more likely than another. Extreme test statistics, or small p-values, are just as likely as non-extreme statistics, or large p-values, because all observed outcomes are the result of random sampling variation. Therefore, p-values under a true null must necessarily adopt the zigzag shape, which means no apparent pattern, as they represent the probability of observing data is at chance given that the null hypothesis is true.

@@ -1,0 +1,296 @@
+---
+title: "HW10"
+author: "Claire Chen"
+date: today
+format: pdf
+editor: visual
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r message=FALSE, warning=FALSE}
+library(haven)
+library(emmeans)
+library(lme4)
+library(lmerTest)
+library(readr)
+library(labelled)
+library(rstanarm)
+library(BayesFactor)
+library(easystats)
+library(tidyverse)
+library(BFpack)
+library(knitr)
+library(patchwork)
+library(scales)
+library(modelr)
+
+df <- read_csv(
+  "https://github.com/felixthoemmes/hwdatasets/blob/master/rt.csv?raw=true")
+```
+
+# Question 1
+
+First, import the data, code ID and condition as factors, and generate a table that reports the mean and standard deviation of the outcome variable (“y”) for all intensity levels. For this and following questions, please always round your numbers to 2 decimal places and use well-formatted tables.
+
+```{r}
+df <- df |>
+  mutate(cond = to_factor(cond),
+         ID = to_factor(ID))
+
+df |>
+  group_by(cond) |>
+  summarize(mean = mean(y),
+            sd = sd(y)) |>
+  kable(digits = 2,
+        caption = "Summary Statistics")
+```
+
+# Question 2
+
+In addition to the descriptive statistics above, also generate a graphical display. First display a grouped boxplot, where you plot all reaction times (across all subjects) separately for each condition. As an alternative display, use a so-called spaghetti plot. For the spaghetti plot, first form averages by ID and condition, and then plot the averages of each person across conditions as lines. The plot will have condition on the x-axis, the average response for each person on the y-axis, and a single line for each person. Importantly, you are not plotting individual datapoints anymore, but averages for each person. You do not need to describe the plots.
+
+```{r message=FALSE, warning=FALSE}
+df |>
+  ggplot(aes(x = cond, y = y)) +
+  geom_boxplot() +
+  scale_x_discrete(limits = c("low", "med", "hi")) + 
+  labs(title = "Boxplot of Reaction Times by Condition",
+       x = "Condition",
+       y = "Reaction Time")
+
+df_summary <- df |>
+  group_by(ID, cond) |>
+  summarize(mean = mean(y))
+
+df_summary |>
+  ggplot(aes(x = cond, y = mean, group = ID, color = ID)) +
+  geom_line(alpha = 0.7) +
+  scale_x_discrete(limits = c("low", "med", "hi")) + 
+  labs(title = "Spaghetti Plot",
+       x = "Condition",
+       y = "Average Reaction Time") +
+  ylim(0, 12.5) +
+  theme(legend.position = "none") 
+```
+
+# Question 3
+
+Perform a frequentist analysis with condition as a predictor, and ID as a fixed factor. That means, that you insert condition, ID, and the interaction as predictors in an lm model. Please note that this is an incorrect analysis, as it assumes that every row is an independent subject. The degrees of freedom will be incorrect for this model. Report the means of the conditions, along with a main effect, and all pairwise differences between the marginal means.
+
+```{r message=FALSE, warning=FALSE}
+lm <- lm(y ~ cond * ID, data = df)
+
+joint_tests(lm) |>
+  mutate(p.value = pvalue(p.value)) |>
+  kable(digits = c(0, 2, 2, 2, 3),
+        row.names = FALSE,
+        caption = "Frequentist Analysis Results")
+
+summary(emmeans(lm, specs = ~ cond), infer = TRUE) |>
+  mutate(p.value = pvalue(p.value)) |>
+  rename(lower.CI = lower.CL, upper.CI = upper.CL) |>
+  kable(digits = c(0, 2, 2, 2, 2, 2, 2, 3),
+        caption = "Frequentist Analysis Results")
+
+summary(emmeans(lm, specs = ~ cond, 
+                contr = "pairwise"), infer = TRUE)$contrasts |>
+  mutate(p.value = pvalue(p.value)) |>
+  rename(lower.CI = lower.CL, upper.CI = upper.CL) |>
+  kable(digits = c(0, 2, 2, 2, 2, 2, 2, 3),
+        caption = "Frequentist Analysis Pairwise Differences Results")
+```
+
+# Question 4
+
+Now, redo the previous model, but use ID as a random factor. That means that you enter the condition as a fixed factor, then add a random effect for the intercept and the condition. This means that both the level, and the effect of condition are allowed to vary randomly by ID. Again, report the means of the conditions, along with a main effect, and all pairwise differences between the marginal means. Also report the amount of variability in the intercept and in the condition effects (you can find them in the summary statement of lmer).
+
+```{r}
+lmer <- lmer(y ~ cond + (1 + cond | ID), data = df)
+
+joint_tests(lmer) |>
+  mutate(p.value = pvalue(p.value)) |>
+  kable(digits = c(0, 2, 2, 2, 3),
+        row.names = FALSE,
+        caption = "Frequentist Analysis Results")
+
+summary(emmeans(lmer, specs = ~ cond), infer = TRUE) |>
+  mutate(p.value = pvalue(p.value)) |>
+  rename(lower.CI = lower.CL, upper.CI = upper.CL) |>
+  kable(digits = c(0, 2, 2, 2, 2, 2, 2, 3),
+        caption = "Frequentist Analysis Mixed-Effects Model Results")
+
+summary(emmeans(lmer, specs = ~ cond, 
+                contr = "pairwise"), infer = TRUE)$contrasts |>
+  mutate(p.value = pvalue(p.value)) |>
+  rename(lower.CI = lower.CL, upper.CI = upper.CL) |>
+  kable(digits = c(0, 2, 2, 2, 2, 2, 2, 3),
+        caption = "Frequentist Analysis Pairwise Differences 
+        Mixed-Effects Model Results")
+
+print(summary(lmer)$varcor)
+```
+
+# Question 5
+
+Redo the analysis from Question 3 using Bayesian statistics. In particular, report Bayes Factors that compare a null model against all other possible models. Treat ID as a fixed factor. Then report Bayes Factors that compare the most complex models to all other possible models. Then do Bayesian estimation in rstan, using the exact same model as in Question 3. Use priors normal(0,3) for the coeﬀicients, and normal(0,3) for the intercept. Interpret the results of the two sets of Bayes Factors in a short write-up, and report the means of all conditions (with credible intervals), along with all pairwise mean differences (with credible intervals).
+
+```{r message=FALSE, warning=FALSE}
+anovaBF(y ~ cond * ID, data = df) |>
+  extractBF() |>
+  select(-error, -time, -code) |>
+  mutate_if(is.numeric, funs(as.character(signif(., 3)))) |>
+  kable(caption = "Bayes Factors of Null Model")
+
+anovaBF(y ~ cond * ID, data = df, whichModels = "top") |>
+  extractBF() |>
+  select(-error, -time, -code) |>
+  mutate_if(is.numeric, funs(as.character(signif(., 3)))) |>
+  kable(caption = "Bayes Factors of Complex Model")
+```
+
+```{r results = "hide", cache=TRUE, message=FALSE, warning=FALSE}
+set.seed(5750)
+blm <- stan_glm(y ~ cond * ID, family = gaussian(), data = df,
+                prior_intercept = normal(0, 3, autoscale = TRUE),
+                prior = normal(0, 3, autoscale = TRUE))
+```
+
+```{r message=FALSE, warning=FALSE}
+set.seed(5750)
+describe_posterior(emmeans(blm, specs = ~ cond), 
+                   test = "bayesfactor", bf_prior = blm) |>
+  mutate(BF = exp(log_BF)) |>
+  select(-log_BF) |>
+  mutate_if(is.numeric, funs(as.character(signif(., 3)))) |>
+  kable(digits = c(0, 2, 2, 2, 2, 2),
+        caption = "Bayesian Analysis Results")
+
+set.seed(5750)
+describe_posterior(emmeans(blm, specs = ~ cond, contr = "pairwise")$contrasts, 
+                   test = "bayesfactor", bf_prior = blm) |>
+  mutate(BF = exp(log_BF)) |>
+  select(-log_BF) |>
+  mutate_if(is.numeric, funs(as.character(signif(., 3)))) |>
+  kable(digits = c(0, 2, 2, 2, 2, 2),
+        caption = "Bayesian Analysis Pairwise Differences Results")
+```
+
+The results of the Bayesian analysis offer compelling evidence regarding the differences in reaction times across conditions (hi, low, and med). When comparing models against a null model that excludes predictors, the Bayes Factors (BFs) are extraordinarily large. These values reflect overwhelming evidence that including either predictor significantly improves model fit. The most complex model, incorporating cond, ID, and their interaction (cond:ID), has an extraordinarily big BF, indicating that this model fits the data substantially better than any simpler alternatives, suggesting the importance of including all factors and their interaction.
+
+Further evidence emerges when comparing simpler models to the complex model. Here, the BFs are minuscule, demonstrating strong evidence against simpler models relative to the most complex one. This suggests that accounting for interactions between cond and ID is crucial for accurately explaining variability in the data. Therefore, the full model appears to be favored over the complex model.
+
+The Bayesian estimation results further clarify the differences between conditions. The estimated medians for reaction times are 7.99 (95% credible interval \[7.87, 8.11\]) for condition hi, 6.05 (95% CI \[5.92, 6.19\]) for condition low, and 7.08 (95% CI \[7.03, 7.13\]) for condition med. These results show that reaction times vary across conditions, with hi showing the highest and low the lowest median response times. The extremely large BF for med (essentially infinite) highlights very strong evidence in the model’s strength for predicting this condition’s response. Pairwise differences confirm these observations, showing strong evidence for differences: the median difference between hi and low is 1.94 (95% CI \[1.76, 2.12\]), between hi and med is 0.911 (95% CI \[0.775, 1.04\]), and between low and med is -1.03 (95% CI \[-1.17, -0.884\]). Collectively, since none of the credible intervals included the value 0, these results indicate robust differences in reaction times across conditions with overwhelming evidence supporting the distinctions.
+
+# Question 6
+
+Now redo the analyses from Question 4 in a Bayesian framework. Compute Bayes Factors and estimate the posterior distributions (and report credible intervals) for both contrasts that compare a null model against all other possible models. Again, treat ID as a random factor. Then report Bayes Factors that compare the most complex models to all other possible models. Then do Bayesian estimation in rstan, using the exact same model as in Question 4. You will have to use stan_glmer. Use priors normal(0,3) for the coeﬀicients, and normal(0,3) for the intercept. Interpret the results of the two sets of Bayes Factors in a short write-up, and report the means of all conditions (with credible intervals), along with all pairwise mean differences (with credible intervals).
+
+```{r message=FALSE, warning=FALSE}
+anovaBF(y ~ cond * ID, data = df, whichRandom = "ID") |>
+  extractBF() |>
+  select(-error, -time, -code) |>
+  mutate_if(is.numeric, funs(as.character(signif(., 3)))) |>
+  kable(caption = "Bayes Factors of Null Model")
+
+anovaBF(y ~ cond * ID, data = df, 
+        whichModels = "top", whichRandom = "ID") |>
+  extractBF() |>
+  select(-error, -time, -code) |>
+  mutate_if(is.numeric, funs(as.character(signif(., 3)))) |>
+  kable(caption = "Bayes Factors of Complex Model")
+```
+
+```{r results = "hide", cache=TRUE, message=FALSE, warning=FALSE}
+set.seed(5750)
+blmer <- stan_glmer(y ~ cond + (1 + cond | ID), 
+                    family = gaussian(), data = df,
+                    prior_intercept = normal(0, 3, autoscale = TRUE),
+                    prior = normal(0, 3, autoscale = TRUE),
+                    prior_covariance = decov(regularization = 1))
+```
+
+```{r message=FALSE, warning=FALSE}
+set.seed(5750)
+describe_posterior(emmeans(blmer, specs = ~ cond), 
+                   test = "bayesfactor", bf_prior = blmer) |>
+  mutate(BF = exp(log_BF)) |>
+  select(-log_BF) |>
+  mutate_if(is.numeric, funs(as.character(signif(., 3)))) |>
+  kable(digits = c(0, 2, 2, 2, 2, 2),
+        caption = "Bayesian Analysis Results")
+
+set.seed(5750)
+describe_posterior(emmeans(blmer, specs = ~ cond, 
+                           contr = "pairwise")$contrasts, 
+                   test = "bayesfactor", bf_prior = blmer) |>
+  mutate(BF = exp(log_BF)) |>
+  select(-log_BF) |>
+  kable(digits = c(0, 2, 2, 2, 2, 2),
+        caption = "Bayesian Analysis Pairwise Differences Results")
+```
+
+The results of the Bayesian analysis for this model reveal meaningful differences in reaction times across conditions, with strong evidence favoring the full model over the complex model. The Bayes Factor (BF) for comparing the model with cond and ID to the null model is 4.22x10^67^, indicating overwhelming evidence that the inclusion of these factors significantly improves model fit. This large BF reflects the considerable explanatory power of accounting for both the condition and individual differences (ID) in the model. In contrast, when comparing the most complex model (which includes ID and cond as random effects) to a simpler model with only ID, the BF is extremely small, 2.37x10^-68^.
+
+The Bayesian estimation results provide further insight into the condition effects. The estimated medians for reaction times are 7.98 (95% credible interval \[7.46, 8.49\]) for condition hi, 6.08 (95% CI \[5.7, 6.44\]) for condition low, and 7.08 (95% CI \[6.84, 7.31\]) for condition med. These values indicate clear differences across conditions, with hi showing the highest median reaction time and low the lowest. Pairwise comparisons between conditions further underscore the strength of these differences. The difference between hi and low has a median of 1.91 (95% CI \[1.15, 2.64\]) and a BF of 31.42, indicating substantial evidence for this difference. The difference between hi and med has a median of 0.91 (95% CI \[0.52, 1.31\]) with a BF of 37.15, again providing strong support for a meaningful distinction. Finally, the difference between low and med shows a median of -1.00 (95% CI \[-1.38, -0.62\]), highlighting a strong contrast with low having a lower reaction time than med. These results collectively demonstrate robust evidence for condition-level differences in reaction times, supported by credible intervals that do not overlap zero that indicate strong evidence for meaningful distinctions.
+
+# Question 7
+
+Form model predictions from the frequentist fixed effects and random effects model, and plot spaghetti plots of the predictions in a similar manner in which you constructed the previous spaghetti plot. Compare the two spaghetti plots of model-implied values that you are constructing in this plot with the spaghetti plot of the descriptive statistics that you obtained earlier. Mention and briefly explain the concept of shrinkage in your answer.
+
+```{r}
+df1 <- df |>
+  add_predictions(lm, var = "pred_lm")
+
+df2 <- df |>
+  add_predictions(lmer, var = "pred_lmer")
+
+plot1 <- ggplot(df1, aes(x = cond, y = pred_lm, group = ID, color = ID)) +
+  geom_line(alpha = 0.7) +
+  scale_x_discrete(limits = c("low", "med", "hi")) + 
+  labs(title = "Frequentist Model",
+       x = "Condition",
+       y = "Predicted Reaction Time",
+       color = "ID") +
+  ylim(0, 12.5) +
+  theme(legend.position = "none")   
+
+plot2 <- ggplot(df2, aes(x = cond, y = pred_lmer, group = ID, color = ID)) +
+  geom_line(alpha = 0.7) +
+  scale_x_discrete(limits = c("low", "med", "hi")) + 
+  labs(title = "Mixed-Effects Model",
+       x = "Condition",
+       y = "Predicted Reaction Time",
+       color = "ID") +
+  ylim(0, 12.5) +
+  theme(legend.position = "none")
+
+combined_plot <- plot1 + plot2
+combined_plot
+```
+
+The frequentist fixed-effects model plot displayed predictions for individual reaction times based solely on cond and ID as fixed factors. This model resembles a lot of the original sphagetti plot from descriptive statistics, whereas the mixed-effects model differs more from both the fixed-effects plot and the original plot. Because this model treats each observation independently, it resulted in a high degree of variability across individual predictions, with lines for each ID showing more variability and sometimes diverging widely from group-level trends. This lack of structure in accounting for individual differences often leads to less stable predictions for individuals, especially those with limited data.
+
+In contrast, the mixed-effects model, which treated ID as a random factor, produced smoother predictions. By accounting for both fixed effects of the condition and random individual variability, this model demonstrated “shrinkage,” wherein predictions for individuals were pulled towards the overall group-level means. This effect reflects a balance between capturing individual differences and ensuring that predictions do not stray too far from the population-level pattern, providing more conservative and stable estimates. Compared to the fixed-effects model, the mixed-effects approach yielded predictions that better reflect both individual variability and broader population trends, illustrating the value of incorporating random effects to enhance prediction stability and generalizability.
+
+# Question 8
+
+One advantage of within-subjects designs is that they tend to have greater statistical power compared to between-subjects designs. Since the same participants are exposed to all conditions, individual differences (such as age, baseline performance, etc.) are controlled for within each participant. This reduces the error variance in the data, making it easier to detect significant effects even when the sample size is smaller. Essentially, because each participant acts as their own control, within-subjects designs can be more sensitive to the effect of the independent variable. Another advantage is that within-subjects designs typically require fewer participants than between-subjects designs. Since each participant participates in all conditions of the experiment, there’s no need to recruit separate groups for each condition. This can be particularly advantageous when dealing with limited resources, time constraints, or hard-to-reach populations. The efficiency of using fewer participants helps reduce the overall cost and effort required for data collection.
+
+However, one of the major disadvantages of within-subjects designs is the potential for carryover effects. These occur when a participant’s response in one condition is influenced by their experience in a previous condition. This is particularly problematic in experiments where the conditions are highly contrasting or involve long intervals between conditions, as the effects of earlier conditions may not fully dissipate by the time the participant moves on to the next condition. Carryover effects can confound the results and make it difficult to isolate the effect of the independent variable. Another disadvantage is the presence of order effects. The order in which participants experience the conditions can impact their responses, potentially leading to bias. For example, participants may perform better in later conditions due to practice effects, or worse due to fatigue or boredom. While techniques like counterbalancing can help control for order effects, they do not completely eliminate the possibility of such biases. This makes interpreting the effects of the independent variable more complex, as the order of conditions might have an unintended influence on the outcome.
+
+# Question 9
+
+A researcher might be interested in a random effect because it helps account for variability that is not explained by the fixed effects, but is still important in understanding the data. Random effects reflect the natural differences between subjects, groups, or units in a study that could influence the outcome, but are not the primary focus of the research. For example, in a study measuring reaction times across different individuals, the random effect might represent individual differences in baseline reaction times or how they respond to experimental conditions. By including random effects, the researcher can more accurately capture the true relationship between the predictors and the outcome, without overestimating the fixed effects.
+
+From random effects, researchers can learn about how much variability exists in the data due to factors that differ across individuals or groups. For instance, if a random intercept is included for subjects, the researcher can estimate how much participants differ from each other in terms of their baseline levels. If random slopes are included for a factor (e.g., a condition), the researcher can learn whether the effect of that factor varies across individuals. This information provides a more nuanced understanding of the data, highlighting the role of individual differences and allowing for better generalization of the findings. Essentially, random effects help the researcher understand the “noise” in the data and account for the influence of unmeasured or unknown factors.
+
+One key aspect of including random effects is the use of a shrinkage estimator, which “shrinks” estimates for individual clusters towards the overall group mean. This occurs because the model balances the data for each cluster against the broader group-level information, leading to more conservative estimates for clusters with limited or noisy data. Shrinkage reduces the risk of overfitting, ensuring that individual predictions are more stable and reliable by pooling information across all clusters. This approach makes random effects especially valuable when there is substantial variability among clusters, as it accounts for both global and individual differences, enhancing the interpretability and generalizability of the model’s predictions.
+
+# Question 10
+
+In this study, the observed variance in the measurements of the rats can be broken down into a few main components. First, there is variation between rats, which reflects the differences in responses among individual rats. These differences may arise from factors such as genetics, health status, or behavioral tendencies, leading to unique reactions for each rat compared to the others. This is called between-subjects variance and indicates how much one rat’s measurements differ on average from another’s.
+
+Another important source of variation is the variation between cages. Since the rats are housed in different cages, conditions like lighting, temperature, or other environmental factors specific to each cage may influence their responses. This is referred to as between-groups variance and accounts for the differences in measurements that are due to the environment each rat experiences. Differences between cages can be important because they highlight how the housing environment affects the outcomes being measured.
+
+Additionally, there is within-rat variance, which captures the variability in measurements taken from the same rat across different experimental conditions and over time. This component reflects how a rat’s responses can change depending on the conditions it is exposed to, as well as moment-to-moment fluctuations in its behavior. A key part of this within-rat variance is the between-condition variance, which specifically represents the differences caused by changes in the experimental conditions themselves, such as different levels of stimulus intensity. Together, these components—variation between rats, between cages, within rats, and between conditions—help explain the total variance observed in the data and give a clearer picture of the factors driving the differences in measurements.
