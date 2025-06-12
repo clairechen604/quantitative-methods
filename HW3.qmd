@@ -283,23 +283,3 @@ ggplot(new_df1, aes(x = index, y = value, color = Group, shape = Group)) +
   scale_shape_manual(values = c("Control" = 16, "Treatment" = 1)) +
   theme(legend.position = "bottom")
 ```
-
-# Question 8
-
-Heterogeneous treatment effect (HTE) is a biasing effect that occurs when different subgroups in a population react to the treatment differently, but this variation is not properly accounted for. It means that the treated potential outcomes differ among those who are treated versus those who are not treated had they been treated. If a certain subgroup is more likely to receive the treatment due to some biased selection method, their observed outcomes can differ systematically from other untreated subgroups had they been treated.
-
-Suppose an experiment is studying the effects of a certain drug that is more effective for those who are biologically female. If females are more likely to be in the treatment group of the experiment, the observed difference in outcomes between the treatment and control groups will overestimate the overall effect of the drug. HTE is biasing the the effectiveness of the drug by inflating the effect because the drug is more effective for a certain subset of the overall population that is disproportionately represented in the treated group.
-
-In a randomized experiment, though, HTE does not pose a threat to the estimation of the ATE because randomized assignments are assumed to be independent of each individual subject's potential outcomes. Therefore, even if HTE exists in an experiment, randomization ensures that there is an equal distribution of each subgroup across the treatment and control groups such that the estimated ATE is reflective of the true average effect across the population.
-
-# Question 9
-
-Firstly, the independence assumption could be violated in a randomized experiment due to attrition, which refers to the dropping out of participants throughout an experiment, especially in a non-random, systematic fashion. For example, in a drug effectiveness experiment, those who are in the treated group may experience much greater negative side effects than those in the placebo group. Due to the negative side effects, those who are in the treated group are more likely to drop out than those in the placebo, or control, group. Thus, the participants who remained until the end of the experiment may not be representative of the originally randomized groups.
-
-Secondly, participants' non-compliance is another reason to the violation of independence assumption in a randomized experiment. Using the same drug effectiveness experiment as an example, participants in either treatment or placebo group may not honor their original assignment. Those who are in the treated group may not take the treatment, or those who are in the placebo group may gain access to the treatment. At the end of the experiment, the independence assumption no longer stands because those who actually took the treatment were not selected independent of individual characteristics.
-
-Lastly, treatment diffusion could also contribute to the violation of the independence assumption in a randomized experiment. This happens when those who are in the control group are indirectly affected by the treatment given to those in the treated group. In the drug effectiveness experiment, if there are no strict boundaries between the placebo and treatment groups, those in the placebo group may benefit from the improve health conditions of those who are treated had the two groups are in the same social circle. Thus, the placebo group would not serve as an unbiased counterfactual to the treatment group.
-
-# Question 10
-
-Identification is the theoretical determination, under certain assumptions like randomization, of whether a causal effect can be inferred from experiments. For example, in a randomized experiment, the process of randomization ensures the identification of the causal effect of the variable that is randomized. The only alternative explanation to significant treatment effect in a randomized experiment would be chance. Estimation of causal effects, on the other hand, is the statistical calculation of causal effect based on the data collected once a causal effect is identified. Estimation provides us with the magnitude of the causal effect based on the quality and quantity of the data available.
