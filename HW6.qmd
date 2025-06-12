@@ -297,25 +297,3 @@ bf_dept
 ```
 
 Based on the results from the Bayesian analysis, since the BF is approximately 9x10^10^, this means that there is overwhelming evidence supporting the alternative hypothesis. In this case, the data is strongly against the null hypothesis which posits equivalence, so the mean salary of the fire and police departments are not equivalent.
-
-# Question 8
-
-This discrepancy occurs because Bayesian hypothesis testing and Frequentist significance testing interpret evidence differently. In Frequentist testing, a very small p-value (p \< 0.001) suggests that the observed data is highly unlikely under the null hypothesis, leading to its rejection. However, this does not directly quantify the strength of evidence for or against the null hypothesis; it simply measures the likelihood of obtaining data as extreme as what was observed if the null hypothesis were true.
-
-In contrast, Bayesian hypothesis testing via Bayes Factors compares the relative evidence for two competing hypotheses, incorporating prior beliefs. If the Bayes Factor shows weak support for the null, it could be due to the influence of a prior that does not strongly favor the alternative hypothesis, or the data does not provide compelling evidence for the alternative, even though the p-value suggests a significant result. The difference in results reflects the fact that Bayes Factors account for both prior information and the likelihood of the data, while p-values focus solely on the data under the null hypothesis.
-
-# Question 9
-
-The Bayesian credible interval may be narrower than the Frequentist confidence interval due to the influence of the prior distribution in the Bayesian analysis. In Bayesian inference, the credible interval reflects both the data and the prior beliefs about the parameter. If the prior is informative, such as concentrated around certain values, it can add additional information, reducing the uncertainty and leading to a narrower credible interval.
-
-In contrast, the Frequentist confidence interval is based solely on the observed data, without incorporating prior information. As a result, it may be wider, especially if the data is limited or noisy. Essentially, the Bayesian credible interval combines prior information with the data, while the Frequentist confidence interval is driven entirely by the variability in the data. This difference explains why the credible interval might be more narrow.
-
-# Question 10
-
-Null Hypothesis Significance Testing (NHST) is easy to understand and widely used, offering a clear decision framework for hypothesis testing based on p-values. However, it is only focusing on whether an effect is statistically significant but does not provide information about the size of the effect and can lead to overemphasis on significance without considering practical relevance.
-
-Confidence Intervals give a range of plausible values for the parameter, offering more insight into the uncertainty and size of an effect. A disadvantage is that they rely solely on the sample data and may be wide or imprecise, especially with small sample sizes or noisy data.
-
-Bayes Factors allow direct comparison of evidence for both the null and alternative hypotheses, incorporating prior knowledge and offering more flexibility in interpretation. However, computing Bayes Factors can be computationally intensive, especially for complex models, and may not always yield intuitive results for non-experts.
-
-Credible Intervals provide an intuitive probabilistic interpretation, directly indicating the probability that the parameter lies within the interval. A downside is that they may be overly narrow if the data strongly agrees with the prior, potentially giving a false sense of certainty about the parameter estimate.
